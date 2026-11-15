@@ -1,0 +1,32 @@
+name: Work item
+description: A piece of planned work with its own estimate. One work item is delivered by one PR.
+labels: ["work"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        After creating the issue, set its parent (the stage or task)
+        and fill in **Stage** and **Estimate h** on the NEBo Project.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What this work item delivers, in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      description: Checkable acceptance criteria. The PR that closes this issue repeats them with their results.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence to capture
+      description: Screenshots, logs or links that prove it works, saved to `docs/evidence/<task>/`.
+    validations:
+      required: false

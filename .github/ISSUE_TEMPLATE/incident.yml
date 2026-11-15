@@ -1,0 +1,80 @@
+name: Incident
+description: >-
+  A troubleshooting case with its root-cause analysis.
+  Open it as soon as something breaks and fill it in as you go.
+title: "incident: "
+labels: ["incident"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Paste evidence while investigating; the analysis sections can be completed later.
+        Every incident gets a **prevention** sub-issue, closed by the PR that implements it.
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - SEV1 - service down
+        - SEV2 - degraded service
+        - SEV3 - minor, no user impact
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Configuration
+        - Resource
+        - Network
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms and impact
+      description: What was observed, where, and who or what was affected.
+    validations:
+      required: true
+  - type: textarea
+    id: timeline
+    attributes:
+      label: Timeline
+      description: Detected, investigating, mitigated and resolved, with times (UTC).
+      value: |
+        - Detected:
+        - Mitigated:
+        - Resolved:
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands and output
+      description: For example `kubectl describe`, `kubectl get events`, `kubectl logs`.
+      render: shell
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpts
+      render: text
+  - type: textarea
+    id: resources
+    attributes:
+      label: Resource analysis
+      description: "`kubectl top`, dashboard screenshots, limits vs usage."
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root cause
+      description: What caused the failure, and why.
+  - type: textarea
+    id: fix
+    attributes:
+      label: Fix
+      description: What resolved it, with links to the commits or PRs.
+  - type: input
+    id: prevention
+    attributes:
+      label: Prevention issue
+      description: Link to the prevention sub-issue.
