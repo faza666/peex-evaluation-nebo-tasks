@@ -1,16 +1,21 @@
-from app import db
+import logging
+
+from app import app, db
 from app.models import Menu
 
-class Seeder(object):
-    def populate_database(self):
-        record = Menu.query.first()
-        if not record:
-            new_record = Menu(name="Baked potatoes")
-            db.session.add(new_record)
-            db.session.commit()
+log = logging.getLogger("seed")
 
-if __name__ == '__main__':
-    print("Seeding...")
-    seeder = Seeder()
-    seeder.populate_database()
-    print("Seeding complete.")
+
+class Seeder:
+    def populate_database(self):
+        if db.session.execute(db.select(Menu)).first() is None:
+            db.session.add(Menu(name="Baked potatoes"))
+            db.session.commit()
+            log.info("seeded the menu table")
+        else:
+            log.info("menu table already has data, nothing to seed")
+
+
+if __name__ == "__main__":
+    with app.app_context():
+        Seeder().populate_database()

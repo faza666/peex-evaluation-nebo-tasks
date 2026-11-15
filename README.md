@@ -35,6 +35,35 @@ The work is delivered in three stages. Each stage creates only the infrastructur
 |---|---|
 | `GET /` | `{"status": "ok"}` |
 | `GET /menu` | Today's special, or 404 if there is none |
+| `GET /health` | Liveness: `{"status": "ok", "version": "<APP_VERSION>"}` |
+| `GET /ready` | Readiness: 200 when the database answers, 503 when it doesn't |
+| `GET /metrics` | Prometheus metrics: request counts and latency per endpoint, plus `app_info{version}` |
+
+Logs go to stdout as one JSON object per line, including gunicorn's access log.
+
+## Running it
+
+Locally (Python 3.8 or newer):
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python -m pytest --cov        # tests and coverage
+.venv/bin/ruff check . && .venv/bin/ruff format --check .
+```
+
+In a container:
+
+```sh
+docker build --build-arg APP_VERSION=0.1.0 -t nebo-menu .
+docker run --rm -p 8000:8000 nebo-menu  # migrates, seeds, then serves on :8000
+```
+
+The image is deliberately based on `python:3.8-slim`, which is end-of-life, so the security scan in Task 2 has real findings to fail on.
+
+Configuration comes from environment variables: `DATABASE_URL` (default: SQLite inside the container), `APP_VERSION`, `LOG_LEVEL` and `PORT`.
+
+Dependencies: edit `requirements.in` or `requirements-dev.in`, then regenerate the pinned files with the command at the top of each `.in` file.
 
 ## Origin
 
