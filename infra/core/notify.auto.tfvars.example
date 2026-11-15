@@ -1,0 +1,2 @@
+# Copy to notify.auto.tfvars (git-ignored) and put your address in it.
+notify_email = "you@example.com"
