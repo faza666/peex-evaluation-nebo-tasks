@@ -30,6 +30,6 @@ export AZURE_COMMUNICATION_CONNECTION_STRING
 az communication email send --sender "$sender" --to "$to" \
   --subject "[NEBo][test] Email from Azure Communication Services" \
   --text "This is a test message from the NEBo core stack. If it reached your spam folder, add a filter that keeps messages whose subject starts with [NEBo]." \
-  -o none
+  --only-show-errors -o none
 
 echo "Sent from $sender to the notification address. Check the inbox and the spam folder."

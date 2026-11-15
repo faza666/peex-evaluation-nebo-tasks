@@ -30,7 +30,7 @@ resource "azurerm_federated_identity_credential" "github" {
 
 # --- What the GitHub identity may do ----------------------------------------------------------
 # Read everything (status and sleep-guard queries), manage only the core resource group here;
-# each later stack grants Contributor on its own resource group.
+# each later stack grants Contributor on its own resource group. AcrPush comes with the registry in A1.
 
 resource "azurerm_role_assignment" "github_reader" {
   scope                = data.azurerm_subscription.current.id
@@ -42,13 +42,6 @@ resource "azurerm_role_assignment" "github_reader" {
 resource "azurerm_role_assignment" "github_core_contributor" {
   scope                = azurerm_resource_group.core.id
   role_definition_name = "Contributor"
-  principal_id         = azurerm_user_assigned_identity.github.principal_id
-  principal_type       = "ServicePrincipal"
-}
-
-resource "azurerm_role_assignment" "github_acr_push" {
-  scope                = azurerm_container_registry.core.id
-  role_definition_name = "AcrPush"
   principal_id         = azurerm_user_assigned_identity.github.principal_id
   principal_type       = "ServicePrincipal"
 }

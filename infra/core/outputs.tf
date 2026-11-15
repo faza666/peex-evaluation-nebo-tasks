@@ -15,11 +15,6 @@ output "azure_subscription_id" {
   value       = data.azurerm_subscription.current.subscription_id
 }
 
-output "acr_login_server" {
-  description = "Container registry login server (ACR_LOGIN_SERVER)."
-  value       = azurerm_container_registry.core.login_server
-}
-
 output "acs_endpoint" {
   description = "Communication Services endpoint used to send email (ACS_ENDPOINT)."
   value       = "https://${azurerm_communication_service.core.hostname}"

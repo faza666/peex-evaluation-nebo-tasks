@@ -32,7 +32,7 @@ resource "azurerm_monitor_workspace" "core" {
   tags                = local.tags
 }
 
-# --- Secrets and images -----------------------------------------------------------------------
+# --- Secrets ----------------------------------------------------------------------------------
 
 resource "azurerm_key_vault" "core" {
   name                       = "kv-nebo-${local.suffix}"
@@ -46,14 +46,6 @@ resource "azurerm_key_vault" "core" {
   tags                       = local.tags
 }
 
-resource "azurerm_container_registry" "core" {
-  name                = "acrnebo${local.suffix}"
-  resource_group_name = azurerm_resource_group.core.name
-  location            = var.location
-  sku                 = "Basic"
-  admin_enabled       = false # pulls and pushes use Entra ID identities only
-  tags                = local.tags
-}
 
 # --- Alerts and budget ------------------------------------------------------------------------
 
