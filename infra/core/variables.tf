@@ -21,6 +21,18 @@ variable "github_repo" {
   default     = "faza666/peex-evaluation-nebo-tasks"
 }
 
+variable "github_owner_id" {
+  description = "Numeric ID of the repository owner. GitHub puts it in the OIDC subject (owner@id), so a re-registered name can't inherit access."
+  type        = number
+  default     = 56168853
+}
+
+variable "github_repo_id" {
+  description = "Numeric ID of the repository, also part of the OIDC subject (name@id)."
+  type        = number
+  default     = 1459147871
+}
+
 variable "budget_amount" {
   description = "Monthly budget for the subscription, in the billing currency."
   type        = number

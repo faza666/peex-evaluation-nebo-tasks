@@ -27,3 +27,5 @@ terraform apply core.tfplan
 ```
 
 The outputs (client, tenant and subscription IDs, email endpoint and sender) are not secret and become GitHub repository variables. The notification address is only stored in `notify.auto.tfvars` and the GitHub secret `NOTIFY_EMAIL`.
+
+**OIDC subjects:** GitHub names the repository with immutable IDs in the token subject, e.g. `repo:faza666@56168853/peex-evaluation-nebo-tasks@1459147871:ref:refs/heads/main`, so the federated credentials use that format (`github_owner_id`, `github_repo_id`). A re-created repository with the same name gets a new ID and no access.
