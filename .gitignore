@@ -115,3 +115,12 @@ dmypy.json
 
 # Local databases
 *.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars
+!*.tfvars.example

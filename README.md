@@ -1,121 +1,41 @@
-# CD/CI Tutorial Sample Application ⚙
+# PeEx NEBo evaluation tasks
 
-**NOTE:** This code was written for an
-[article](https://medium.com/rockedscience/docker-ci-cd-pipeline-with-github-actions-6d4cd1731030)
-in the **RockedScience** publication on Medium.
+A small Flask REST API, a daily-menu service, used as the workload for eight DevOps evaluation tasks on Azure: CI/CD feedback and integrations, configuration management, observability, query scripts, troubleshooting, service mesh and load balancing.
 
-## Description
+**Planning and progress:** [NEBo Project](https://github.com/users/faza666/projects/1). Every piece of work is an issue with an estimate and its actual time.
 
-This sample Python REST API application was written for a tutorial on implementing Continuous Integration and Delivery pipelines.
+## Stages
 
-It demonstrates how to:
+The work is delivered in three stages. Each stage creates only the infrastructure its tasks need and removes what later stages don't need.
 
- * Write a basic REST API using the [Flask](http://flask.pocoo.org) microframework
- * Basic database operations and migrations using the Flask wrappers around [Alembic](https://bitbucket.org/zzzeek/alembic) and [SQLAlchemy](https://www.sqlalchemy.org)
- * Write automated unit tests with [unittest](https://docs.python.org/2/library/unittest.html)
+| Stage | Tasks | Infrastructure |
+|---|---|---|
+| [A: Delivery & configuration](https://github.com/faza666/peex-evaluation-nebo-tasks/issues/1) | 1 Feedback loop · 2 Third-party integrations · 3 Configuration management | `core`, Container Apps, a pilot VM |
+| [B: Container operations](https://github.com/faza666/peex-evaluation-nebo-tasks/issues/2) | 5 Observability · 4 Query scripts · 6 Troubleshooting | AKS, the VM again |
+| [C: Container networking](https://github.com/faza666/peex-evaluation-nebo-tasks/issues/3) | 7 Service mesh · 8 Load balancing | Istio on AKS, Application Gateway |
 
-Also:
+## Repository layout
 
- * How to use [GitHub Actions](https://github.com/features/actions)
+| Path | Contents |
+|---|---|
+| `app/`, `migrations/`, `tests/` | The Flask application, its database migrations and tests |
+| `services/menu-web/` | A small front-end service (Stage B) |
+| `charts/menu/` | Helm chart for AKS (Stage B) |
+| `infra/{core,aca,vm,aks,edge}/` | Terraform, one stack per lifetime |
+| `k8s/{mesh,observability,netpol}/` | Kubernetes manifests |
+| `ansible/` | Configuration management (Task 3) |
+| `scripts/ops/`, `scripts/queries/` | Operations and query scripts |
+| `docs/task1…task8/` | One write-up per task |
+| `docs/adr/` | Architecture decision records |
+| `docs/evidence/` | Screenshots and recordings |
 
-## Requirements
+## API
 
- * `Python 3.8`
- * `Pip`
- * `virtualenv`, or `conda`, or `miniconda`
+| Endpoint | Response |
+|---|---|
+| `GET /` | `{"status": "ok"}` |
+| `GET /menu` | Today's special, or 404 if there is none |
 
-The `psycopg2` package does require `libpq-dev` and `gcc`.
-To install them (with `apt`), run:
+## Origin
 
-```sh
-$ sudo apt-get install libpq-dev gcc
-```
-
-## Installation
-
-With `virtualenv`:
-
-```sh
-$ python -m venv venv
-$ source venv/bin/activate
-$ pip install -r requirements.txt
-```
-
-With `conda` or `miniconda`:
-
-```sh
-$ conda env create -n ci-cd-tutorial-sample-app python=3.8
-$ source activate ci-cd-tutorial-sample-app
-$ pip install -r requirements.txt
-```
-
-Optional: set the `DATABASE_URL` environment variable to a valid SQLAlchemy connection string. Otherwise, a local SQLite database will be created.
-
-Initalize and seed the database:
-
-```sh
-$ flask db upgrade
-$ python seed.py
-```
-
-## Running tests
-
-Run:
-
-```sh
-$ python -m unittest discover
-```
-
-## Running the application
-
-### Running locally
-
-Run the application using the built-in Flask server:
-
-```sh
-$ flask run
-```
-
-### Running on a production server
-
-Run the application using `gunicorn`:
-
-```sh
-$ pip install -r requirements-server.txt
-$ gunicorn app:app
-```
-
-To set the listening address and port, run:
-
-```
-$ gunicorn app:app -b 0.0.0.0:8000
-```
-
-## Running on Docker
-
-Run:
-
-```
-$ docker build -t ci-cd-tutorial-sample-app:latest .
-$ docker run -d -p 8000:8000 ci-cd-tutorial-sample-app:latest
-```
-
-## Deploying to Heroku
-
-Run:
-
-```sh
-$ heroku create
-$ git push heroku master
-$ heroku run flask db upgrade
-$ heroku run python seed.py
-$ heroku open
-```
-
-or use the automated deploy feature:
-
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
-
-For more information about using Python on Heroku, see these Dev Center articles:
-
- - [Python on Heroku](https://devcenter.heroku.com/categories/python)
+The application is cloned from [edonosotti/ci-cd-tutorial-sample-app](https://github.com/edonosotti/ci-cd-tutorial-sample-app), written for a [RockedScience article](https://medium.com/rockedscience/docker-ci-cd-pipeline-with-github-actions-6d4cd1731030) on Medium. Its commit history is kept; everything after it is new work for these tasks.
