@@ -8,13 +8,18 @@ resource "azurerm_user_assigned_identity" "github" {
 }
 
 locals {
+  # GitHub's OIDC subject names the owner and the repository with their immutable IDs:
+  #   repo:<owner>@<owner_id>/<repo>@<repo_id>:<context>
+  github_repo_subject = format("repo:%s@%d/%s@%d", split("/", var.github_repo)[0], var.github_owner_id,
+  split("/", var.github_repo)[1], var.github_repo_id)
+
   # Which workflow runs may use the identity: the two deployment environments, the main
   # branch (scheduled and manual runs) and pull requests.
   github_subjects = {
-    env-dev      = "repo:${var.github_repo}:environment:dev"
-    env-prod     = "repo:${var.github_repo}:environment:prod"
-    branch-main  = "repo:${var.github_repo}:ref:refs/heads/main"
-    pull-request = "repo:${var.github_repo}:pull_request"
+    env-dev      = "${local.github_repo_subject}:environment:dev"
+    env-prod     = "${local.github_repo_subject}:environment:prod"
+    branch-main  = "${local.github_repo_subject}:ref:refs/heads/main"
+    pull-request = "${local.github_repo_subject}:pull_request"
   }
 }
 
