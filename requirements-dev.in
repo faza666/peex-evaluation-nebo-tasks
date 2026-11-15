@@ -1,0 +1,4 @@
+# Test and lint tools, resolved the same way as requirements.in (Python 3.8 compatible).
+pytest>=8,<9
+pytest-cov>=5,<6
+ruff
