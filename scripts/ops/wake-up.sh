@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the current stage's compute, tag it to sleep after N hours, and wait until it runs.
+# Create the registry if missing, start the stage's compute, tag it to sleep after N hours, wait until it runs.
 #
 # Usage: scripts/ops/wake-up.sh [--targets all|vm,aks,appgw] [--hours 1-12]
 #   --targets  which kinds of compute to start (default: all that exist)
@@ -27,6 +27,9 @@ if ! [[ $hours =~ ^[0-9]+$ ]] || ((hours < 1 || hours > 12)); then
   log "ERROR: --hours must be a whole number from 1 to 12 (got '$hours')"
   exit 2
 fi
+
+# The registry first: CI pushes to it even in stages with no compute to start.
+ensure_registry
 
 rows=$(nebo_compute "$targets")
 compute=()

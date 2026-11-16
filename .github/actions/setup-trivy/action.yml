@@ -1,0 +1,33 @@
+name: setup-trivy
+description: >
+  Install a pinned Trivy release from GitHub and verify it against the SHA-256 recorded here.
+  Used instead of aquasecurity/trivy-action and setup-trivy, whose release tags were rewritten
+  in the March 2026 supply-chain compromise: a mutable tag can't change what this installs.
+
+inputs:
+  version:
+    description: Trivy version, without the leading v.
+    default: "0.76.2"
+  sha256:
+    description: SHA-256 of trivy_<version>_Linux-64bit.tar.gz, from that release's checksums file.
+    default: bc0fc726e017b8927a62b2d3531d7a84ee01769daf5c99ed866dced54089fdbf
+
+runs:
+  using: composite
+  steps:
+    - name: Install Trivy ${{ inputs.version }}
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        tarball="trivy_${VERSION}_Linux-64bit.tar.gz"
+        dir="$RUNNER_TEMP/trivy-$VERSION"
+        mkdir -p "$dir"
+        curl -fsSL --retry 3 --output "$dir/$tarball" \
+          "https://github.com/aquasecurity/trivy/releases/download/v${VERSION}/${tarball}"
+        echo "$SHA256  $dir/$tarball" | sha256sum --check --strict -
+        tar -xzf "$dir/$tarball" -C "$dir" trivy
+        echo "$dir" >> "$GITHUB_PATH"
+        "$dir/trivy" --version

@@ -25,6 +25,11 @@ output "acs_sender" {
   value       = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed.mail_from_sender_domain}"
 }
 
+output "acr_name" {
+  description = "Name of the container registry that wake-up.sh creates in rg-nebo-core; images are <name>.azurecr.io/menu."
+  value       = "acrnebo${local.suffix}"
+}
+
 output "key_vault_name" {
   description = "Key Vault name."
   value       = azurerm_key_vault.core.name

@@ -8,6 +8,7 @@
 TAG_STACK="nebo:stack"
 TAG_SLEEP_AFTER="nebo:sleep-after"
 TAG_FIRST_SEEN="nebo:first-seen-awake"
+CORE_RG="rg-nebo-core"
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
@@ -79,6 +80,30 @@ to_array() { # array-name "$rows"
 check_targets() {
   [[ $1 == all || $1 =~ ^(vm|aks|appgw)(,(vm|aks|appgw))*$ ]] ||
     { log "ERROR: --targets must be 'all' or a comma-separated list of vm, aks, appgw (got '$1')"; return 1; }
+}
+
+# The suffix shared with the Terraform stacks, bootstrap-state.sh and ci.yml:
+# the first 6 hex characters of sha256(subscription ID).
+nebo_suffix() {
+  local sub
+  sub=$(az account show --query id -o tsv --only-show-errors)
+  printf '%s' "$sub" | sha256sum | cut -c1-6
+}
+
+# Create the container registry if it is missing. It lives outside Terraform, so it costs
+# nothing until the first session that needs it: Basic, Entra ID only, tagged with the core stack.
+ensure_registry() {
+  local name
+  name="acrnebo$(nebo_suffix)"
+  if az acr show --name "$name" --only-show-errors -o none 2>/dev/null; then
+    log "$name: registry exists"
+    return 0
+  fi
+  log "$name: creating the container registry (Basic) in $CORE_RG"
+  az acr create --resource-group "$CORE_RG" --name "$name" --sku Basic --admin-enabled false \
+    --tags "$TAG_STACK=core" --only-show-errors -o none
+  log "$name: created"
+  summary "Created the container registry \`$name\`."
 }
 
 set_tags() { # resource-id key=value...
