@@ -48,8 +48,8 @@ resource "azurerm_key_vault" "core" {
 
 # --- Container images -------------------------------------------------------------------------
 # The registry is not managed here: scripts/ops/wake-up.sh creates acrnebo<suffix> in this
-# resource group when it is missing, so it costs nothing until the first working session.
-# Delete it before destroying this stack (see README).
+# resource group and sleep.sh deletes it, so it only costs on days someone works.
+# Run sleep before destroying this stack (see README).
 
 # --- Alerts and budget ------------------------------------------------------------------------
 

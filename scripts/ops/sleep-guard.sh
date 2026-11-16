@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The safety net, run hourly by sleep-guard.yml. For every NEBo compute resource that is awake:
-#   - past its nebo:sleep-after time            -> put it to sleep;
+# The safety net, run hourly by sleep-guard.yml. For every NEBo compute resource that is awake,
+# and the container registry if it exists:
+#   - past its nebo:sleep-after time            -> put it to sleep (the registry: delete it);
 #   - running without a valid sleep-after time  -> warn and tag nebo:first-seen-awake, and put it
 #     to sleep once it has run untagged for more than 2 hours (e.g. started from the portal).
 # It only reports when it acts, so it is quiet most of the time.
@@ -19,11 +20,24 @@ case ${1:-} in
 esac
 act() { if ((dry_run)); then log "(dry run) would: $*"; else "$@"; fi; }
 
+# Compute is stopped and tagged asleep; the registry is deleted, images included.
+put_to_sleep() { # json line
+  if [[ $(jq -r .type <<<"$1") == registries ]]; then
+    act delete_registry
+  else
+    act stop_resource "$1"
+    act set_tags "$(jq -r .id <<<"$1")" "$TAG_SLEEP_AFTER=asleep" "$TAG_FIRST_SEEN="
+  fi
+}
+verb() { if [[ $(jq -r .type <<<"$1") == registries ]]; then echo "deleted"; else echo "put to sleep"; fi; }
+
 now=$(now_epoch)
-rows=$(nebo_compute all | jq -c 'select(.power == "running" or .power == "transitioning")')
+rows=$(nebo_resources | jq -c '
+  select((.computeKind != "other" and (.power == "running" or .power == "transitioning"))
+         or .type == "registries")')
 awake=()
 to_array awake "$rows"
-log "${#awake[@]} compute resource(s) awake"
+log "${#awake[@]} resource(s) awake (compute and the registry)"
 
 actions=()
 for r in "${awake[@]}"; do
@@ -35,10 +49,9 @@ for r in "${awake[@]}"; do
 
   if [[ -n $due ]]; then
     if ((now > due)); then
-      warn "$name was due to sleep at $sleep_after; putting it to sleep"
-      act stop_resource "$r"
-      act set_tags "$id" "$TAG_SLEEP_AFTER=asleep" "$TAG_FIRST_SEEN="
-      actions+=("| $name | past sleep-after ($sleep_after) | put to sleep |")
+      warn "$name was due to sleep at $sleep_after; $(verb "$r") now"
+      put_to_sleep "$r"
+      actions+=("| $name | past sleep-after ($sleep_after) | $(verb "$r") |")
     else
       log "$name: awake until $sleep_after"
     fi
@@ -52,10 +65,9 @@ for r in "${awake[@]}"; do
     act set_tags "$id" "$TAG_FIRST_SEEN=$(date -u +%Y-%m-%dT%H:%MZ)"
     actions+=("| $name | running without sleep-after | warned; sleeps after $deadline |")
   elif ((now - seen > GRACE_SECONDS)); then
-    warn "$name has run without a sleep-after time since $first_seen; putting it to sleep"
-    act stop_resource "$r"
-    act set_tags "$id" "$TAG_SLEEP_AFTER=asleep" "$TAG_FIRST_SEEN="
-    actions+=("| $name | untagged for over 2 h (since $first_seen) | put to sleep |")
+    warn "$name has run without a sleep-after time since $first_seen; $(verb "$r") now"
+    put_to_sleep "$r"
+    actions+=("| $name | untagged for over 2 h (since $first_seen) | $(verb "$r") |")
   else
     log "$name: untagged, in its 2 h grace period since $first_seen"
   fi

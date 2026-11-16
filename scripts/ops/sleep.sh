@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Stop or deallocate the current stage's compute. State and configuration are kept.
+# Stop or deallocate the stage's compute (state is kept) and delete the container registry.
 #
-# Usage: scripts/ops/sleep.sh [--targets all|vm,aks,appgw] [--no-wait]
-#   --targets  which kinds of compute to stop (default: all that exist)
+# Usage: scripts/ops/sleep.sh [--targets all|vm,aks,appgw,acr] [--no-wait]
+#   --targets  what to put to sleep: compute kinds to stop, acr to delete the registry (default: all)
 #   --no-wait  return as soon as the stop requests are sent
 set -euo pipefail
 # shellcheck source=scripts/ops/lib.sh
@@ -28,20 +28,26 @@ rows=$(nebo_compute "$targets" | jq -c 'select(.power != "stopped")')
 awake=()
 to_array awake "$rows"
 if ((${#awake[@]} == 0)); then
-  log "Nothing to put to sleep: no '$targets' compute is running."
-  summary "Nothing to put to sleep: no \`$targets\` compute is running."
-  exit 0
+  log "No '$targets' compute is running."
+  summary "No \`$targets\` compute is running."
+else
+  for r in "${awake[@]}"; do
+    stop_resource "$r"
+    set_tags "$(jq -r .id <<<"$r")" "$TAG_SLEEP_AFTER=asleep" "$TAG_FIRST_SEEN="
+    log "$(jq -r .name <<<"$r"): stopping"
+  done
+
+  if ((wait)); then
+    log "Waiting until everything is stopped (up to 15 minutes)..."
+    printf '%s\n' "${awake[@]}" | wait_for stopped 900
+  fi
+  summary "### Put ${#awake[@]} resource(s) to sleep"
 fi
 
-for r in "${awake[@]}"; do
-  stop_resource "$r"
-  set_tags "$(jq -r .id <<<"$r")" "$TAG_SLEEP_AFTER=asleep" "$TAG_FIRST_SEEN="
-  log "$(jq -r .name <<<"$r"): stopping"
-done
-
-if ((wait)); then
-  log "Waiting until everything is stopped (up to 15 minutes)..."
-  printf '%s\n' "${awake[@]}" | wait_for stopped 900
+# The registry goes entirely, images included: it is billed per day, and the next wake-up
+# creates it again for CI to push to.
+if targets_include "$targets" acr; then
+  delete_registry
 fi
-summary "### Put ${#awake[@]} resource(s) to sleep"
+
 "$(dirname "$0")/status.sh"

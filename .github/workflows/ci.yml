@@ -2,7 +2,7 @@ name: ci
 
 # Runs on every pull request and every push to main:
 #   lint → unit tests with coverage → SonarQube Cloud quality gate
-#   CodeQL (Python and these workflows) and Trivy (Terraform), in parallel
+#   CodeQL (Python and these workflows) and the Trivy gate on the Terraform code, in parallel
 #   build the image → Trivy image scan and gate → on main only, push to ACR as v<version> and sha-<7>
 # Findings go to the Security tab as SARIF; the summary job links every result in one place.
 on:
@@ -157,20 +157,17 @@ jobs:
       security-events: write  # upload results to the Security tab
     outputs:
       findings: ${{ steps.scan.outputs.findings }}
+      gate: ${{ steps.scan.outputs.gate }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-trivy
-      - name: Trivy misconfiguration scan of the Terraform code (report only)
+      - name: Trivy misconfiguration scan of the Terraform code and gate
         id: scan
-        run: |
-          trivy config --quiet --format json --output trivy-iac.json infra/
-          trivy convert --quiet --format sarif --severity HIGH,CRITICAL --output trivy-iac.sarif trivy-iac.json
-          trivy convert --quiet --scanners misconfig --format table --severity HIGH,CRITICAL trivy-iac.json
-          findings=$(jq '[.Results[]?.Misconfigurations[]? | select(.Severity == "HIGH" or .Severity == "CRITICAL")]
-                         | length' trivy-iac.json)
-          echo "findings=$findings" >> "$GITHUB_OUTPUT"
+        env:
+          FAIL_ON: ${{ vars.TRIVY_IAC_FAIL_ON || 'HIGH,CRITICAL' }}  # set the variable to "none" to report only
+        run: scripts/ci/trivy-iac.sh infra
       - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
         if: ${{ !cancelled() && hashFiles('trivy-iac.sarif') != '' }}
         with:

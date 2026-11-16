@@ -70,7 +70,10 @@ else
   fi
 fi
 
-iac=$(out iac-scan findings)
+iac_details="–"
+if [[ -n $(out iac-scan findings) ]]; then
+  iac_details="$(out iac-scan findings) HIGH/CRITICAL misconfigurations · gate $(out iac-scan gate)"
+fi
 version=$(out image version)
 
 cat <<EOF
@@ -82,6 +85,6 @@ cat <<EOF
 | Unit tests | $(icon test) | $test_details |
 | SonarQube Cloud | $(icon sonar) | $sonar_details |
 | CodeQL | $(icon codeql) | Python and the workflows$(link "Security tab" "$security") |
-| Trivy, Terraform | $(icon iac-scan) | ${iac:-–} HIGH/CRITICAL misconfigurations, report only$(link "Security tab" "$security") |
+| Trivy, Terraform | $(icon iac-scan) | $iac_details$(link "Security tab" "$security") |
 | Image | $(icon image) | $image_details |
 EOF

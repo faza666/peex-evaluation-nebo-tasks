@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "What to wake: all, or a comma-separated list of vm, aks, appgw"
+        description: "What to wake: all, or a comma-separated list of vm, aks, appgw, acr (acr creates the registry)"
         type: string
         default: all
         required: true
