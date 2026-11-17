@@ -1,11 +1,12 @@
 name: wake-up
 
-# Start the current stage's compute and tag it to sleep after N hours.
+# Create the container registry if it is missing, then start the current stage's compute and
+# tag it to sleep after N hours.
 on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "What to wake: all, or a comma-separated list of vm, aks, appgw"
+        description: "What to wake: all, or a comma-separated list of vm, aks, appgw, acr (acr creates the registry)"
         type: string
         default: all
         required: true

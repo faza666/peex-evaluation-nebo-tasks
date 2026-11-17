@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Start the current stage's compute, tag it to sleep after N hours, and wait until it runs.
+# Create the registry if missing, start the stage's compute, tag it to sleep after N hours, wait until it runs.
 #
-# Usage: scripts/ops/wake-up.sh [--targets all|vm,aks,appgw] [--hours 1-12]
-#   --targets  which kinds of compute to start (default: all that exist)
+# Usage: scripts/ops/wake-up.sh [--targets all|vm,aks,appgw,acr] [--hours 1-12]
+#   --targets  what to wake: compute kinds to start, acr to create the registry (default: all)
 #   --hours    when sleep-guard may put it back to sleep (default 4, maximum 12)
 set -euo pipefail
 # shellcheck source=scripts/ops/lib.sh
@@ -28,16 +28,22 @@ if ! [[ $hours =~ ^[0-9]+$ ]] || ((hours < 1 || hours > 12)); then
   exit 2
 fi
 
+until=$(iso_in_hours "$hours")
+
+# The registry first: CI pushes to it even in stages with no compute to start.
+if targets_include "$targets" acr; then
+  ensure_registry "$until"
+fi
+
 rows=$(nebo_compute "$targets")
 compute=()
 to_array compute "$rows"
 if ((${#compute[@]} == 0)); then
-  log "Nothing to wake: no '$targets' compute exists in the current stage."
-  summary "Nothing to wake: no \`$targets\` compute exists in the current stage."
+  log "No '$targets' compute exists in the current stage."
+  summary "No \`$targets\` compute exists in the current stage."
   exit 0
 fi
 
-until=$(iso_in_hours "$hours")
 for r in "${compute[@]}"; do
   name=$(jq -r .name <<<"$r")
   set_tags "$(jq -r .id <<<"$r")" "$TAG_SLEEP_AFTER=$until" "$TAG_FIRST_SEEN="

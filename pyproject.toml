@@ -14,6 +14,7 @@ addopts = "-q -p no:cacheprovider"
 [tool.coverage.run]
 source = ["app"]
 branch = true
+relative_files = true  # coverage.xml names files relative to the repo root, as SonarQube Cloud expects
 
 [tool.coverage.report]
 show_missing = true

@@ -34,8 +34,8 @@ resource "azurerm_federated_identity_credential" "github" {
 }
 
 # --- What the GitHub identity may do ----------------------------------------------------------
-# Read everything (status and sleep-guard queries), manage only the core resource group here;
-# each later stack grants Contributor on its own resource group. AcrPush comes with the registry in A1.
+# Read everything (status and sleep-guard queries), manage only the core resource group here,
+# and push images; each later stack grants Contributor on its own resource group.
 
 resource "azurerm_role_assignment" "github_reader" {
   scope                = data.azurerm_subscription.current.id
@@ -54,6 +54,15 @@ resource "azurerm_role_assignment" "github_core_contributor" {
 resource "azurerm_role_assignment" "github_kv_secrets_user" {
   scope                = azurerm_key_vault.core.id
   role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_user_assigned_identity.github.principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Subscription scope, because the registry is created and removed outside Terraform
+# (wake-up.sh): the grant stays valid whenever it exists.
+resource "azurerm_role_assignment" "github_acr_push" {
+  scope                = data.azurerm_subscription.current.id
+  role_definition_name = "AcrPush"
   principal_id         = azurerm_user_assigned_identity.github.principal_id
   principal_type       = "ServicePrincipal"
 }

@@ -1,11 +1,12 @@
 name: sleep
 
-# Stop or deallocate the current stage's compute; state and configuration are kept.
+# Stop or deallocate the current stage's compute (state and configuration are kept) and delete
+# the container registry with its images.
 on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "What to put to sleep: all, or a comma-separated list of vm, aks, appgw"
+        description: "What to sleep: all, or a comma-separated list of vm, aks, appgw, acr (acr deletes the registry)"
         type: string
         default: all
         required: true

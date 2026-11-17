@@ -7,6 +7,10 @@
 *.db
 .coverage
 coverage.xml
+test-results.xml
+trivy-*
+VERSION
+sonar-project.properties
 .env
 .env.template
 .flaskenv
