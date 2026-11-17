@@ -88,7 +88,7 @@ targets_include() { # targets kind
   [[ $1 == all || ,$1, == *,$2,* ]]
 }
 
-# The suffix shared with the Terraform stacks, bootstrap-state.sh and ci.yml:
+# The suffix shared with the Terraform stacks, bootstrap-state.sh and docker-build.yml:
 # the first 6 hex characters of sha256(subscription ID).
 nebo_suffix() {
   local sub
@@ -123,8 +123,8 @@ ensure_registry() { # [sleep-after]
     log "$name: creating the container registry (Basic) in $CORE_RG"
     az acr create --resource-group "$CORE_RG" --name "$name" --sku Basic --admin-enabled false \
       --tags "${tags[@]}" --only-show-errors -o none
-    log "$name: created (empty: run ci.yml on main to rebuild and push the current image)"
-    summary "Created the container registry \`$name\`. It starts empty: run **ci** on \`main\` to push the current image."
+    log "$name: created (empty: run docker-build.yml on main to rebuild and push the current image)"
+    summary "Created the container registry \`$name\`. It starts empty: run **docker-build** on \`main\` to push the current image."
   fi
   if [[ -n $sleep_after ]]; then
     log "$name: sleep-guard deletes it after $sleep_after"

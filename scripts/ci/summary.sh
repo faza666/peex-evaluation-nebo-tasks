@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Print the ci.yml run summary as Markdown: one row per stage, with links to every report.
+# Print the docker-build.yml run summary as Markdown: one row per stage, with links to every report.
 #
 # Reads:
 #   NEEDS       the summary job's needs context, as JSON: ${{ toJSON(needs) }}
@@ -77,7 +77,7 @@ fi
 version=$(out image version)
 
 cat <<EOF
-## CI${version:+ · v$version}
+## docker-build${version:+ · v$version}
 
 | Stage | Result | Details |
 |---|---|---|

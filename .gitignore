@@ -117,7 +117,7 @@ dmypy.json
 # Local databases
 *.db
 
-# Scan reports written by ci.yml
+# Scan reports written by docker-build.yml
 trivy-*.json
 trivy-*.sarif
 trivy-*.txt
