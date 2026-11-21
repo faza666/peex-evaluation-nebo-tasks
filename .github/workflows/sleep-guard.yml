@@ -39,7 +39,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}  # empty on scheduled runs
         run: |
           if [[ $DRY_RUN == true ]]; then
-            scripts/ops/sleep-guard.sh --dry-run
+            core/scripts/ops/sleep-guard.sh --dry-run
           else
-            scripts/ops/sleep-guard.sh
+            core/scripts/ops/sleep-guard.sh
           fi

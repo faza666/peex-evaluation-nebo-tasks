@@ -34,15 +34,18 @@ jobs:
       - name: Ruff lint and format check, on the runtime Python
         env:
           CMD: >-
-            pip install -q "$(grep '^ruff==' requirements-dev.txt)" &&
-            ruff check --output-format=github . &&
-            ruff format --check .
-        run: scripts/ci/in-runtime-image.sh "$CMD"
+            pip install -q "$(grep '^ruff==' core/app/requirements-dev.txt)" &&
+            ruff check --output-format=github --config core/app/pyproject.toml core &&
+            ruff format --check --config core/app/pyproject.toml core
+        run: core/scripts/ci/in-runtime-image.sh "$CMD"
 
   test:
     needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: core/app
     outputs:
       tests: ${{ steps.report.outputs.tests }}
       coverage: ${{ steps.report.outputs.coverage }}
@@ -55,18 +58,18 @@ jobs:
           CMD: >-
             pip install -q -r requirements-dev.txt &&
             python -m pytest --cov --cov-report=term --cov-report=xml:coverage.xml --junitxml=test-results.xml
-        run: scripts/ci/in-runtime-image.sh "$CMD"
+        run: ../scripts/ci/in-runtime-image.sh "$CMD"
       - name: Report
         id: report
         if: ${{ !cancelled() }}
-        run: python3 scripts/ci/test-report.py
+        run: python3 ../scripts/ci/test-report.py
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         if: ${{ !cancelled() }}
         with:
           name: test-reports
           path: |
-            coverage.xml
-            test-results.xml
+            core/app/coverage.xml
+            core/app/test-results.xml
           if-no-files-found: warn
           retention-days: 14
 
@@ -88,6 +91,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: test-reports
+          path: core/app
       - name: Note a missing token
         if: env.SONAR_TOKEN == ''
         run: echo "::warning title=SonarQube Cloud skipped::SONAR_TOKEN is not available (not set yet, or a fork)."
@@ -99,6 +103,7 @@ jobs:
         if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304  # v8.4.0
         with:
+          projectBaseDir: core/app
           args: >
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
@@ -110,7 +115,7 @@ jobs:
           START: ${{ steps.clock.outputs.start }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          key=$(sed -n 's/^sonar.projectKey=//p' sonar-project.properties)
+          key=$(sed -n 's/^sonar.projectKey=//p' core/app/sonar-project.properties)
           if [[ -n $PR_NUMBER ]]; then
             url="https://sonarcloud.io/summary/new_code?id=$key&pullRequest=$PR_NUMBER"
           else
@@ -167,7 +172,7 @@ jobs:
         id: scan
         env:
           FAIL_ON: ${{ vars.TRIVY_IAC_FAIL_ON || 'HIGH,CRITICAL' }}  # set the variable to "none" to report only
-        run: scripts/ci/trivy-iac.sh infra
+        run: core/scripts/ci/trivy-iac.sh .
       - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
         if: ${{ !cancelled() && hashFiles('trivy-iac.sarif') != '' }}
         with:
@@ -208,7 +213,7 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          version=$(scripts/ci/version.sh)
+          version=$(core/scripts/ci/version.sh)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Version: v$version"
       - name: Registry name
@@ -239,7 +244,7 @@ jobs:
             --label "io.github.faza666.ci.run-url=$RUN_URL" \
             --tag "$repo:$VERSION" \
             --tag "$repo:sha-${REVISION::7}" \
-            .
+            core/app
           echo "repo=$repo" >> "$GITHUB_OUTPUT"
           echo "ref=$repo:$VERSION" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/setup-trivy
@@ -256,7 +261,7 @@ jobs:
         env:
           FAIL_ON: ${{ vars.TRIVY_FAIL_ON || 'CRITICAL' }}  # set the variable to "none" to report only
           IMAGE: ${{ steps.build.outputs.ref }}
-        run: scripts/ci/trivy-image.sh "$IMAGE"
+        run: core/scripts/ci/trivy-image.sh "$IMAGE"
       - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v4.39.1
         if: ${{ !cancelled() && hashFiles('trivy-image.sarif') != '' }}
         with:
@@ -307,9 +312,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: scripts/ci
+          sparse-checkout: core/scripts/ci
       - name: Run summary
         env:
           NEEDS: ${{ toJSON(needs) }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: scripts/ci/summary.sh >> "$GITHUB_STEP_SUMMARY"
+        run: core/scripts/ci/summary.sh >> "$GITHUB_STEP_SUMMARY"
