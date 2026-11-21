@@ -36,4 +36,4 @@ jobs:
       - name: Sleep
         env:
           TARGETS: ${{ inputs.targets }}
-        run: scripts/ops/sleep.sh --targets "$TARGETS"
+        run: core/scripts/ops/sleep.sh --targets "$TARGETS"

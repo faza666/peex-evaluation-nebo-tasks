@@ -1,0 +1,21 @@
+# Only the application goes into the image (the build context is this folder).
+.venv
+.ruff_cache
+**/__pycache__
+**/*.pyc
+*.db
+.coverage
+coverage.xml
+test-results.xml
+.scannerwork
+sonar-project.properties
+.env
+.env.template
+.flaskenv
+tests
+*.md
+requirements-dev.*
+requirements.in
+pyproject.toml
+Dockerfile
+.dockerignore
