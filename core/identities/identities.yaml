@@ -1,0 +1,83 @@
+# Every NEBo managed identity, and which GitHub workflow runs may sign in as it.
+#
+# You (the operator) apply this stack yourself; see README.md. An identity has no rights of its own: every role
+# comes from core/rbac/grants.yaml through rbac.yml, after the subscription owner approves it.
+#
+# All identities live in rg-nebo-mgmt and are grouped by how long they live. Turning a group's `active` off
+# deletes its identities, so first turn the same stage off in core/rbac/grants.yaml and let its removals be
+# approved and applied; otherwise role assignments are left pointing at deleted identities.
+#
+# `github` lists the subject contexts GitHub puts in the OIDC token after
+#   repo:faza666@56168853/peex-evaluation-nebo-tasks@1459147871:
+# Identities without `github` are attached to Azure resources (workload identities) and can't be used from GitHub.
+# `kubernetes` lists service accounts (namespace:name) trusted through the AKS OIDC issuer, which is passed as
+# var.aks_oidc_issuer once the cluster exists.
+
+groups:
+  shared:  # A -> end of C
+    active: true
+    identities:
+      mi-nebo-rbac:
+        purpose: Applies role assignments (rbac.yml), only after the subscription owner approves. Locked by the owner.
+        github: [environment:rbac]
+      mi-nebo-plan:
+        purpose: Read-only plans for rbac.yml and terraform.yml.
+        github: [pull_request, ref:refs/heads/main]
+      mi-nebo-ops:
+        purpose: wake-up, sleep, sleep-guard, status and ops-report.
+        github: [ref:refs/heads/main]
+      mi-nebo-notify:
+        purpose: Sends notification email through Azure Communication Services.
+        github: [pull_request, ref:refs/heads/main, environment:dev, environment:prod, environment:vm]
+      mi-nebo-core:
+        purpose: Deploys the core stack (rg-nebo-core).
+        github: [environment:core]
+      mi-nebo-ci:
+        purpose: Pushes images to the container registry from docker-build.yml.
+        github: [ref:refs/heads/main]
+
+  stage-a:  # A -> end of B
+    active: true
+    identities:
+      mi-nebo-stage-a:
+        purpose: Deploys the aca and vm stacks (rg-nebo-stage-a).
+        github: [environment:stage-a]
+      mi-nebo-cd-a:
+        purpose: cd.yml revisions on the two Container Apps.
+        github: [environment:dev, environment:prod]
+      mi-nebo-config:
+        purpose: ansible.yml; opens SSH on the VM's NSG to the runner only.
+        github: [pull_request, ref:refs/heads/main, environment:vm]
+      mi-nebo-menu-aca:
+        purpose: The Container Apps' identity (pulls images, reads Key Vault secrets).
+      mi-nebo-vm:
+        purpose: The VM's identity (pulls images, sends metrics).
+
+  stage-b:  # B -> end of C
+    active: false
+    identities:
+      mi-nebo-stage-b:
+        purpose: Deploys the aks stack (rg-nebo-stage-b).
+        github: [environment:stage-b]
+      mi-nebo-cd-b:
+        purpose: cd.yml Helm releases on AKS.
+        github: [environment:dev, environment:prod]
+      mi-nebo-aks:
+        purpose: AKS control-plane identity.
+      mi-nebo-kubelet:
+        purpose: AKS kubelet identity (pulls images).
+      mi-nebo-menu-wi:
+        purpose: Workload identity of the menu pods (reads Key Vault secrets).
+        kubernetes: []
+
+  stage-c:  # C only
+    active: false
+    identities:
+      mi-nebo-stage-c:
+        purpose: Deploys the edge stack (rg-nebo-stage-c).
+        github: [environment:stage-c]
+      mi-nebo-appgw:
+        purpose: App Gateway identity (reads the TLS certificate from Key Vault).
+      mi-nebo-agic:
+        purpose: Workload identity of the App Gateway ingress controller.
+        kubernetes: []

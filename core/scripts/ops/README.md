@@ -1,11 +1,11 @@
 # Ops scripts
 
-Tool checks, Azure bootstrap, and the wake-up / sleep / status scripts that keep paid compute asleep unless someone is working.
+Tool checks, the state-storage bootstrap, and the wake-up / sleep / status scripts that keep paid compute asleep unless someone is working.
 
 | Script | Purpose |
 |---|---|
 | `check-tools.sh A\|B\|C` | Checks the tools a stage needs (stages are cumulative) and prints their versions. Exits 1 if a required tool is missing. For Stage A it also checks the `az` extensions, the `gh` `project` scope and `gh` sub-issue support. |
-| `bootstrap-state.sh` | One-time Azure setup, safe to re-run: checks you hold Owner, registers the resource providers, creates the Terraform state storage (`rg-nebo-tfstate`, Entra ID only, versioning, soft delete) and writes `core/infra/backend.hcl`. |
+| `bootstrap-state.sh` | One-time setup by the operator, safe to re-run, after the subscription owner has run `core/scripts/owner/1-Prepare-Subscription.ps1`. Creates the Terraform state storage in `rg-nebo-mgmt` (Entra ID only, versioning, soft delete) with one container per state owner (`tfstate-identities`, `-rbac`, `-core`, `-stage-a`, `-stage-b`, `-stage-c`), and writes `core/infra/backend.hcl`. It registers no providers, creates no resource group and assigns no roles. |
 | `send-test-email.sh` | Sends a test email through Communication Services to the notification address, without printing the address or storing the connection string. |
 | `status.sh [--json]` | Lists every resource tagged `nebo:stack`, with the power state of compute and its `nebo:sleep-after` time. Also a Resource Graph query script for Task 4. |
 | `wake-up.sh [--targets all\|vm,aks,appgw,acr] [--hours 1-12]` | Creates the container registry `acrnebo<suffix>` if it is missing (`acr`), then starts the stage's compute, tags it `nebo:sleep-after` = now + N hours (default 4) and waits until it runs. A new registry starts empty: run `docker-build.yml` on `main` to push the current image. |
