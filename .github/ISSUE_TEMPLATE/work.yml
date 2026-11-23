@@ -27,6 +27,6 @@ body:
     id: evidence
     attributes:
       label: Evidence to capture
-      description: Screenshots, logs or links that prove it works, saved to `docs/evidence/<task>/`.
+      description: Screenshots, logs or links that prove it works, saved to `evidence/` in the task's folder.
     validations:
       required: false

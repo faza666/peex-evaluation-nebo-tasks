@@ -42,4 +42,4 @@ jobs:
         env:
           TARGETS: ${{ inputs.targets }}
           HOURS: ${{ inputs.hours }}
-        run: scripts/ops/wake-up.sh --targets "$TARGETS" --hours "$HOURS"
+        run: core/scripts/ops/wake-up.sh --targets "$TARGETS" --hours "$HOURS"

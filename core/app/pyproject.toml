@@ -1,0 +1,24 @@
+[tool.ruff]
+target-version = "py38"
+line-length = 120
+extend-exclude = ["migrations"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+
+[tool.ruff.lint.isort]
+# Named explicitly, because CI runs ruff from the repo root with --config pointing here.
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q -p no:cacheprovider"
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+relative_files = true  # coverage.xml names files relative to this folder, Sonar's project base dir
+
+[tool.coverage.report]
+show_missing = true

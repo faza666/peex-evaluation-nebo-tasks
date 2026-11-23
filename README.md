@@ -16,18 +16,32 @@ The work is delivered in three stages. Each stage creates only the infrastructur
 
 ## Repository layout
 
-| Path | Contents |
-|---|---|
-| `app/`, `migrations/`, `tests/` | The Flask application, its database migrations and tests |
-| `services/menu-web/` | A small front-end service (Stage B) |
-| `charts/menu/` | Helm chart for AKS (Stage B) |
-| `infra/{core,aca,vm,aks,edge}/` | Terraform, one stack per lifetime |
-| `k8s/{mesh,observability,netpol}/` | Kubernetes manifests |
-| `ansible/` | Configuration management (Task 3) |
-| `scripts/ops/`, `scripts/queries/` | Operations and query scripts |
-| `docs/task1…task8/` | One write-up per task |
-| `docs/adr/` | Architecture decision records |
-| `docs/evidence/` | Screenshots and recordings |
+The folders follow the stages. Everything the stages share is in `core/`. Each stage folder has one subfolder per task, holding that task's code, write-up and `evidence/`.
+
+```text
+.github/                                 workflows, issue forms, actions (GitHub reads them only here)
+VERSION                                  the release version: CI adds the patch number
+core/                                    shared across stages
+├── app/                                 the Flask application: code, migrations, tests, Dockerfile
+├── infra/                               Terraform stack core, plus backend.hcl for every stack
+├── scripts/ops/                         tool checks, bootstrap, wake-up / sleep / status, sleep guard
+├── scripts/ci/                          docker-build helpers
+└── adr/                                 architecture decision records
+stage-a-delivery/
+├── task1-feedback/                      badges and notification emails
+├── task2-integrations/                  infra-aca/ (stack aca)
+└── task3-config-mgmt/                   ansible/, infra-vm/ (stack vm), design doc
+stage-b-container-ops/
+├── b0-aks-base/                         infra-aks/ (stack aks), chart/ (Helm), netpol/, menu-web/
+├── task5-observability/                 k8s/
+├── task4-queries/                       scripts/
+└── task6-troubleshooting/               write-up of the incident issues
+stage-c-networking/
+├── task7-service-mesh/                  k8s/ (Istio)
+└── task8-load-balancing/                infra-edge/ (stack edge)
+```
+
+Start from [`core/`](core/), [`stage-a-delivery/`](stage-a-delivery/), [`stage-b-container-ops/`](stage-b-container-ops/) or [`stage-c-networking/`](stage-c-networking/): each has a README with links to its issues.
 
 ## API
 
@@ -43,9 +57,12 @@ Logs go to stdout as one JSON object per line, including gunicorn's access log.
 
 ## Running it
 
+Everything below runs in [`core/app/`](core/app/), the application's own folder.
+
 Locally (Python 3.8 or newer):
 
 ```sh
+cd core/app
 python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/python -m pytest --cov        # tests and coverage
