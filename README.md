@@ -24,7 +24,9 @@ VERSION                                  the release version: CI adds the patch 
 core/                                    shared across stages
 ├── app/                                 the Flask application: code, migrations, tests, Dockerfile
 ├── infra/                               Terraform stack core, plus backend.hcl for every stack
-├── scripts/ops/                         tool checks, bootstrap, wake-up / sleep / status, sleep guard
+├── identities/                          Terraform stack identities: every managed identity (mi-nebo-*)
+├── scripts/owner/                       PowerShell scripts for the subscription owner
+├── scripts/ops/                         tool checks, state bootstrap, wake-up / sleep / status, sleep guard
 ├── scripts/ci/                          docker-build helpers
 └── adr/                                 architecture decision records
 stage-a-delivery/
