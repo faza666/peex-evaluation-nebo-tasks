@@ -128,7 +128,7 @@ elseif ($PSCmdlet.ShouldProcess($NeboRbacIdentity, "Add ReadOnly lock $NeboLockN
 
 Write-Host @"
 
-Done. From now on, every NEBo role assignment arrives as an approval request: a card in your Teams
-approvals channel links to the GitHub run, where you can review the exact list of roles and approve or
+Done. From now on, every NEBo role assignment arrives as an approval request: a card in your Teams chat
+with the operator links to the GitHub run, where you can review the exact list of roles and approve or
 reject it. Run Show-NeboAccess.ps1 at any time to see every NEBo role assignment.
 "@
