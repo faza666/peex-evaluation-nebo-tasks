@@ -26,8 +26,10 @@ groups:
         - Storage Blob Data Contributor @ container:tfstate-core
       mi-nebo-ops:
         - Reader @ rg:core
-      operator:
+      operator:  # Reader on stage-b and stage-c from the start, so all five groups show up in the portal
         - Reader @ rg:core
+        - Reader @ rg:stage-b
+        - Reader @ rg:stage-c
 
   stage-a:  # A -> end of B
     active: true
