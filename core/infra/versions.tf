@@ -10,7 +10,8 @@ terraform {
 
   # Settings come from backend.hcl in this folder: terraform init -backend-config=backend.hcl
   backend "azurerm" {
-    key = "core.tfstate"
+    container_name = "tfstate-core"
+    key            = "core.tfstate"
   }
 }
 
