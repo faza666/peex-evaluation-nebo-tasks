@@ -23,6 +23,9 @@ $NeboRbacStateContainer = 'tfstate-rbac' # Terraform state of the role assignmen
 $NeboStateAccountPrefix = 'stnebotf'
 $NeboLockName = 'nebo-approval-guard'
 $RoleAssignmentApiVersion = '2022-04-01'
+$RoleDefinitionApiVersion = '2022-04-01'
+$NeboRoleIds = @{}   # role name -> GUID, filled by Get-NeboRoleId
+$NeboRoleNames = @{} # role GUID -> name, filled by Get-NeboRoleName
 
 function Connect-NeboSubscription {
     <#
@@ -55,12 +58,36 @@ function Get-NeboResourceGroupId {
 }
 
 function Get-NeboRoleId {
-    <# .SYNOPSIS Returns the GUID of a built-in role, looked up by its exact name (Get-AzRoleDefinition). #>
-    param([Parameter(Mandatory)] [string] $RoleName)
-    $role = Get-AzRoleDefinition -Name $RoleName
-    if (-not $role) { throw "Built-in role '$RoleName' was not found." }
-    if ($role.IsCustom) { throw "'$RoleName' is a custom role; NEBo uses built-in roles only." }
-    return $role.Id
+    <#
+    .SYNOPSIS
+    Returns the GUID of a built-in role, looked up by its exact name through the ARM REST API.
+    Cached per run. Get-AzRoleDefinition isn't used: it prints a breaking-change warning on every call.
+    #>
+    param([Parameter(Mandatory)] [string] $SubscriptionId, [Parameter(Mandatory)] [string] $RoleName)
+    if ($NeboRoleIds.ContainsKey($RoleName)) { return $NeboRoleIds[$RoleName] }
+    $filter = [uri]::EscapeDataString("roleName eq '$RoleName'")
+    $path = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions?`$filter=$filter&api-version=$RoleDefinitionApiVersion"
+    $response = Invoke-AzRestMethod -Method GET -Path $path -WhatIf:$false
+    if ($response.StatusCode -ne 200) {
+        throw "Looking up role '$RoleName' failed ($($response.StatusCode)): $($response.Content)"
+    }
+    $roles = @(($response.Content | ConvertFrom-Json).value)
+    if (-not $roles) { throw "Role '$RoleName' was not found." }
+    $builtIn = @($roles | Where-Object { $_.properties.type -eq 'BuiltInRole' })
+    if ($builtIn.Count -ne 1) { throw "'$RoleName' is not a built-in role; NEBo uses built-in roles only." }
+    $NeboRoleIds[$RoleName] = $builtIn[0].name
+    return $builtIn[0].name
+}
+
+function Get-NeboRoleName {
+    <# .SYNOPSIS Returns a role's name from its GUID through the ARM REST API, or the GUID if it can't be read. Cached per run. #>
+    param([Parameter(Mandatory)] [string] $SubscriptionId, [Parameter(Mandatory)] [string] $RoleId)
+    if (-not $NeboRoleNames.ContainsKey($RoleId)) {
+        $path = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/$($RoleId)?api-version=$RoleDefinitionApiVersion"
+        $response = Invoke-AzRestMethod -Method GET -Path $path -WhatIf:$false
+        $NeboRoleNames[$RoleId] = if ($response.StatusCode -eq 200) { ($response.Content | ConvertFrom-Json).properties.roleName } else { $RoleId }
+    }
+    return $NeboRoleNames[$RoleId]
 }
 
 function New-NeboDeterministicGuid {
@@ -116,7 +143,7 @@ function Set-NeboRoleAssignment {
         [Parameter(Mandatory)] [string] $RoleName,
         [Parameter(Mandatory)] [string] $PrincipalLabel
     )
-    $roleId = Get-NeboRoleId -RoleName $RoleName
+    $roleId = Get-NeboRoleId -SubscriptionId $SubscriptionId -RoleName $RoleName
     $existing = Get-NeboRoleAssignment -Scope $Scope | Where-Object {
         $_.properties.principalId -eq $PrincipalId -and
         $_.properties.roleDefinitionId -like "*/$roleId" -and

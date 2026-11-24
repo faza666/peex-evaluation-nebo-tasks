@@ -79,8 +79,7 @@ foreach ($group in $existing) {
     foreach ($assignment in Get-NeboRoleAssignment -Scope $scope) {
         $p = $assignment.properties
         $who = if ($names.ContainsKey($p.principalId)) { $names[$p.principalId] } else { "$($p.principalType) $($p.principalId)" }
-        $role = Get-AzRoleDefinition -Id (($p.roleDefinitionId -split '/')[-1]) -ErrorAction SilentlyContinue
-        $roleName = if ($role) { $role.Name } else { $p.roleDefinitionId }
+        $roleName = Get-NeboRoleName -SubscriptionId $sub -RoleId (($p.roleDefinitionId -split '/')[-1])
         Remove-NeboRoleAssignmentById -Id $assignment.id -Description "$roleName -> $who @ $(Format-NeboScope -Scope $p.scope)" -Confirm:$false
     }
 }
