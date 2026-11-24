@@ -39,9 +39,9 @@ function Connect-NeboSubscription {
         $connect = @{ Subscription = $SubscriptionId }
         if ($TenantId) { $connect.Tenant = $TenantId }
         Write-Host 'Signing in to Azure (Connect-AzAccount) ...'
-        Connect-AzAccount @connect | Out-Null
+        Connect-AzAccount @connect -WhatIf:$false | Out-Null
     }
-    $context = Set-AzContext -Subscription $SubscriptionId
+    $context = Set-AzContext -Subscription $SubscriptionId -WhatIf:$false
     if ($context.Subscription.Id -ne $SubscriptionId) {
         throw "The active subscription is $($context.Subscription.Id), not $SubscriptionId. Nothing was changed."
     }
@@ -80,7 +80,7 @@ function Get-NeboRoleAssignment {
     $results = [System.Collections.Generic.List[object]]::new()
     $path = "$Scope/providers/Microsoft.Authorization/roleAssignments?api-version=$RoleAssignmentApiVersion"
     while ($path) {
-        $response = Invoke-AzRestMethod -Method GET -Path $path
+        $response = Invoke-AzRestMethod -Method GET -Path $path -WhatIf:$false
         if ($response.StatusCode -eq 404) { return $results }
         if ($response.StatusCode -ne 200) {
             throw "Listing role assignments at $Scope failed ($($response.StatusCode)): $($response.Content)"
@@ -138,7 +138,7 @@ function Set-NeboRoleAssignment {
             }
         } | ConvertTo-Json -Depth 5
         $path = "$Scope/providers/Microsoft.Authorization/roleAssignments/$($name)?api-version=$RoleAssignmentApiVersion"
-        $response = Invoke-AzRestMethod -Method PUT -Path $path -Payload $body
+        $response = Invoke-AzRestMethod -Method PUT -Path $path -Payload $body -Confirm:$false
         if ($response.StatusCode -notin 200, 201) {
             throw "Assigning '$RoleName' to $PrincipalLabel at $shortScope failed ($($response.StatusCode)): $($response.Content)"
         }
@@ -151,7 +151,7 @@ function Remove-NeboRoleAssignmentById {
     [CmdletBinding(SupportsShouldProcess)]
     param([Parameter(Mandatory)] [string] $Id, [Parameter(Mandatory)] [string] $Description)
     if ($PSCmdlet.ShouldProcess($Description, 'Remove role assignment')) {
-        $response = Invoke-AzRestMethod -Method DELETE -Path "$($Id)?api-version=$RoleAssignmentApiVersion"
+        $response = Invoke-AzRestMethod -Method DELETE -Path "$($Id)?api-version=$RoleAssignmentApiVersion" -Confirm:$false
         if ($response.StatusCode -notin 200, 204) {
             throw "Removing $Description failed ($($response.StatusCode)): $($response.Content)"
         }
