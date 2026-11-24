@@ -1,0 +1,59 @@
+# Every NEBo role assignment. This is the list the subscription owner reviews: rbac.yml shows each change in a
+# Teams card and applies it only after the owner approves the run in GitHub. See README.md.
+#
+# Under each principal (an identity from core/identities/identities.yaml, or `operator` for you) every grant is
+#   <built-in role> @ <scope>
+# with one of these scopes:
+#   rg:<group>          a NEBo resource group: mgmt, core, stage-a, stage-b or stage-c
+#   container:<name>    a Terraform state container: tfstate-core, tfstate-stage-a, tfstate-stage-b, tfstate-stage-c
+#   mi:<identity>       a managed identity in rg-nebo-mgmt, for Managed Identity Operator
+#   <group>/<tag>       the one resource in rg-nebo-<group> that its stack tagged nebo:scope=<tag>, e.g. core/acr
+# Never accepted: Owner, User Access Administrator and Role Based Access Control Administrator; any grant on
+# mi-nebo-rbac; the identities and rbac state containers; anything outside the NEBo resource groups.
+#
+# Groups match identities.yaml and live as long as its groups do. Turning a group off removes its grants, which
+# the owner approves like any other change; do that before turning the same group off in identities.yaml.
+# A grant on a resource is added in the work item that creates the resource, because it must exist first.
+
+groups:
+  shared:  # A -> end of C
+    active: true
+    grants:
+      # Added with the core stack: mi-nebo-ci AcrPush @ core/acr, mi-nebo-notify Communication and Email Service
+      # Owner @ core/acs, operator Key Vault Secrets Officer @ core/kv and Log Analytics Reader @ core/law.
+      mi-nebo-core:
+        - Contributor @ rg:core
+        - Storage Blob Data Contributor @ container:tfstate-core
+      mi-nebo-ops:
+        - Reader @ rg:core
+      operator:
+        - Reader @ rg:core
+
+  stage-a:  # A -> end of B
+    active: true
+    grants:
+      # Added with the stacks that create the resources: mi-nebo-stage-a Log Analytics Contributor @ core/law;
+      # mi-nebo-cd-a Container Apps Contributor on the two apps; mi-nebo-menu-aca AcrPull @ core/acr and Key Vault
+      # Secrets User @ core/kv; mi-nebo-vm AcrPull @ core/acr; mi-nebo-config Network Contributor on the VM's NSG.
+      mi-nebo-stage-a:
+        - Contributor @ rg:stage-a
+        - Storage Blob Data Contributor @ container:tfstate-stage-a
+        - Reader @ rg:core
+        - Managed Identity Operator @ mi:mi-nebo-menu-aca
+        - Managed Identity Operator @ mi:mi-nebo-vm
+      mi-nebo-ops:
+        - Reader @ rg:stage-a
+        - Virtual Machine Contributor @ rg:stage-a
+        - Tag Contributor @ rg:stage-a
+      mi-nebo-config:
+        - Reader @ rg:stage-a
+      operator:
+        - Reader @ rg:stage-a
+
+  stage-b:  # B -> end of C
+    active: false
+    grants: {}
+
+  stage-c:  # C only
+    active: false
+    grants: {}
