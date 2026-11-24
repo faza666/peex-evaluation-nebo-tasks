@@ -1,0 +1,43 @@
+name: notify
+description: >
+  Send one NEBo notification. For now it posts an Adaptive Card to a Teams Workflows webhook
+  ("Send webhook alerts from anyone to Teams"). Email through Azure Communication Services joins in #22,
+  with the same content.
+
+inputs:
+  teams-webhook:
+    description: >
+      The workflow's webhook URL, from a secret: TEAMS_WEBHOOK_URL for notifications,
+      TEAMS_APPROVALS_WEBHOOK_URL for the chat with the subscription owner. Anyone holding it can post,
+      so it is never printed.
+    required: true
+  card:
+    description: Path to a JSON file with the Adaptive Card itself (the message around it is added here).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Post the card to Teams
+      shell: bash
+      env:
+        WEBHOOK: ${{ inputs.teams-webhook }}
+        CARD: ${{ inputs.card }}
+      run: |
+        set -euo pipefail
+        if [[ -z $WEBHOOK ]]; then
+          echo "::error title=Teams::No webhook URL was given; is the secret set?"
+          exit 1
+        fi
+        message="$RUNNER_TEMP/teams-message.json"
+        jq -c '{type: "message", attachments: [{contentType: "application/vnd.microsoft.card.adaptive", content: .}]}' \
+          "$CARD" >"$message"
+        # The URL goes to curl through a config on stdin, so it never shows up in a process list either.
+        status=$(printf 'url = "%s"\n' "$WEBHOOK" | curl --silent --show-error --retry 3 --retry-all-errors \
+          --max-time 30 --config - --header 'Content-Type: application/json' --data-binary "@$message" \
+          --output "$RUNNER_TEMP/teams-response.txt" --write-out '%{http_code}') || status=000
+        if [[ $status != 2?? ]]; then
+          echo "::error title=Teams::The webhook answered HTTP $status; the card was not delivered."
+          exit 1
+        fi
+        echo "Teams accepted the card (HTTP $status)."

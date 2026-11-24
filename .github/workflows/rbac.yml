@@ -1,0 +1,262 @@
+name: rbac
+
+# Every NEBo role assignment, from core/rbac/grants.yaml, applied only after the subscription owner approves it
+# (plan section 3.5):
+#   plan     as mi-nebo-plan (read-only). Lists the changes by name, refuses Owner, User Access Administrator,
+#            Role Based Access Control Administrator and anything outside the NEBo resource groups
+#   request  on main, when there are changes: checks that the rbac environment really needs the owner's
+#            approval, then posts an approval card into the Teams chat with the subscription owner
+#   apply    in environment rbac, once the owner approves: as mi-nebo-rbac, plans again and applies only if
+#            the list is still the one in the card
+#   report   a result card in the same chat: applied, or not applied and why
+# Pull requests stop after plan: the list goes to the job summary and a comment. The weekly run finds drift.
+# No plan file is uploaded anywhere, because the repository and its artifacts are public.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - core/rbac/**
+      - core/identities/identities.yaml
+      - core/infra/backend.hcl
+      - core/scripts/ci/rbac-*
+      - .github/actions/notify/**
+      - .github/workflows/rbac.yml
+  push:
+    branches: [main]
+    paths:
+      - core/rbac/**
+      - core/identities/identities.yaml
+      - core/infra/backend.hcl
+      - core/scripts/ci/rbac-*
+      - .github/actions/notify/**
+      - .github/workflows/rbac.yml
+  schedule:
+    - cron: "37 6 * * 1"  # Mondays: drift
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One request at a time on main: a run waiting for approval holds back the next one, which then plans
+  # afresh. A new push to a pull request cancels its older plan.
+  group: rbac-${{ github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  plan:
+    # Pull requests from forks get no Azure sign-in.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write       # OIDC sign-in as mi-nebo-plan
+      pull-requests: write  # the change list as a comment
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_operator_object_id: ${{ secrets.OPERATOR_OBJECT_ID }}
+    outputs:
+      count: ${{ steps.changes.outputs.count }}
+      digest: ${{ steps.changes.outputs.digest }}
+      changes: ${{ steps.changes.outputs.changes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - name: Format, init and validate
+        working-directory: core/rbac
+        run: |
+          terraform fmt -check -diff
+          terraform init -backend-config=../infra/backend.hcl
+          terraform validate -no-color
+      - name: Plan (read-only, without the state lock)
+        working-directory: core/rbac
+        run: |
+          terraform plan -lock=false -no-color -out=rbac.tfplan
+          terraform show -json rbac.tfplan >"$RUNNER_TEMP/rbac-plan.json"
+      - name: Changes
+        id: changes
+        run: core/scripts/ci/rbac-changes.sh "$RUNNER_TEMP/rbac-plan.json"
+      - name: Job summary
+        if: ${{ !cancelled() && hashFiles('rbac-changes.md') != '' }}
+        run: |
+          { echo "## Role assignments"; echo; cat rbac-changes.md; } >>"$GITHUB_STEP_SUMMARY"
+      - name: Comment on the pull request
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('rbac-changes.md') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          marker='<!-- nebo-rbac-plan -->'
+          body=$(printf '%s\n### Role assignments after this pull request\n\n%s\n\n%s\n' "$marker" \
+            "$(cat rbac-changes.md)" \
+            "From the [plan run]($RUN_URL). After the merge, nothing is applied until the subscription owner approves.")
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" |
+            head -n1)
+          if [[ -n $id ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null
+          fi
+
+  request:
+    needs: plan
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.plan.outputs.count != '0'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read        # the rbac environment's protection rules
+      pull-requests: read  # the pull request behind the commit
+    outputs:
+      pr_number: ${{ steps.pr.outputs.number }}
+      pr_title: ${{ steps.pr.outputs.title }}
+      pr_url: ${{ steps.pr.outputs.url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            core/scripts/ci
+            .github/actions/notify
+      - name: Check that the rbac environment needs the subscription owner's approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Without these rules, apply would run without anyone approving it. Stop before asking.
+          # shellcheck disable=SC2016  # $rules is jq, not shell
+          if ! gh api "repos/$GITHUB_REPOSITORY/environments/rbac" --jq '
+              (.protection_rules // []) as $rules
+              | ([$rules[] | select(.type == "required_reviewers" and (.reviewers | length) > 0
+                  and .prevent_self_review == true)] | length) > 0
+                and ([$rules[] | select(.type == "branch_policy")] | length) > 0
+                and .can_admins_bypass == false' | grep -qx true; then
+            echo "::error title=rbac environment not protected::The rbac environment must have a required" \
+              "reviewer with prevent self-review, a branch policy and no admin bypass. Nothing was requested."
+            exit 1
+          fi
+      - name: Find the pull request
+        id: pr
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '(.[0] // {}) | "number=\(.number // "")\ntitle=\(.title // "")\nurl=\(.html_url // "")"' \
+            >>"$GITHUB_OUTPUT"
+      - name: Card
+        env:
+          KIND: ${{ github.event_name == 'schedule' && 'drift' || 'request' }}
+          CHANGES: ${{ needs.plan.outputs.changes }}
+          ACTOR: ${{ github.actor }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          PR_TITLE: ${{ steps.pr.outputs.title }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: python3 core/scripts/ci/rbac-card.py "$KIND" >"$RUNNER_TEMP/card.json"
+      - uses: ./.github/actions/notify
+        with:
+          teams-webhook: ${{ secrets.TEAMS_APPROVALS_WEBHOOK_URL }}
+          card: ${{ runner.temp }}/card.json
+
+  apply:
+    needs: [plan, request]
+    if: github.ref == 'refs/heads/main' && needs.request.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Required reviewer: the subscription owner. Prevent self-review, main only, no admin bypass.
+    environment: rbac
+    permissions:
+      contents: read
+      id-token: write  # OIDC sign-in as mi-nebo-rbac; its federated credential trusts environment:rbac only
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_RBAC }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_operator_object_id: ${{ secrets.OPERATOR_OBJECT_ID }}
+    outputs:
+      reason: ${{ steps.compare.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - name: Plan again
+        working-directory: core/rbac
+        run: |
+          terraform init -backend-config=../infra/backend.hcl
+          terraform plan -no-color -out=rbac.tfplan
+          terraform show -json rbac.tfplan >"$RUNNER_TEMP/rbac-plan.json"
+      - name: Changes
+        id: changes
+        run: core/scripts/ci/rbac-changes.sh "$RUNNER_TEMP/rbac-plan.json"
+      - name: Stop unless this is the approved list
+        id: compare
+        env:
+          APPROVED: ${{ needs.plan.outputs.digest }}
+          CURRENT: ${{ steps.changes.outputs.digest }}
+        run: |
+          if [[ -z $CURRENT || $CURRENT != "$APPROVED" ]]; then
+            echo "reason=changed" >>"$GITHUB_OUTPUT"
+            echo "::error title=List changed::The changes differ from the ones in the approval card, so nothing" \
+              "was applied. Run the workflow again for a new request."
+            exit 1
+          fi
+      - name: Apply
+        working-directory: core/rbac
+        run: terraform apply -no-color rbac.tfplan
+
+  report:
+    needs: [plan, request, apply]
+    if: always() && needs.request.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read  # who approved or rejected the run
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            core/scripts/ci
+            .github/actions/notify
+      - name: Card
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHANGES: ${{ needs.plan.outputs.changes }}
+          RESULT: ${{ needs.apply.result }}
+          REASON: ${{ needs.apply.outputs.reason }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ needs.request.outputs.pr_number }}
+          PR_TITLE: ${{ needs.request.outputs.pr_title }}
+          PR_URL: ${{ needs.request.outputs.pr_url }}
+        run: |
+          APPROVERS=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" \
+            --jq '[.[] | "\(.user.login) (\(.state))"] | join(", ")' || true)
+          export APPROVERS
+          python3 core/scripts/ci/rbac-card.py result >"$RUNNER_TEMP/card.json"
+      - uses: ./.github/actions/notify
+        with:
+          teams-webhook: ${{ secrets.TEAMS_APPROVALS_WEBHOOK_URL }}
+          card: ${{ runner.temp }}/card.json
