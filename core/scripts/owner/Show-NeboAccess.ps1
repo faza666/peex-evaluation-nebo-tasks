@@ -70,23 +70,17 @@ $groups | Format-Table -AutoSize | Out-Host
 
 # --- 2. Role assignments -------------------------------------------------------------------------
 $names = Get-NeboIdentityNames
-$roleNames = @{}
 $assignments = foreach ($group in $groups | Where-Object Exists) {
     $scope = Get-NeboResourceGroupId -SubscriptionId $sub -Name $group.ResourceGroup
     foreach ($assignment in Get-NeboRoleAssignment -Scope $scope) {
         $p = $assignment.properties
-        $roleId = ($p.roleDefinitionId -split '/')[-1]
-        if (-not $roleNames.ContainsKey($roleId)) {
-            $definition = Get-AzRoleDefinition -Id $roleId -ErrorAction SilentlyContinue
-            $roleNames[$roleId] = if ($definition) { $definition.Name } else { $roleId }
-        }
         $principal = if ($names.ContainsKey($p.principalId)) { $names[$p.principalId] }
         elseif ($operator -and $p.principalId -eq $operator) { "operator ($($p.principalId))" }
         else { $p.principalId }
         $description = $p.PSObject.Properties['description']
         [pscustomobject]@{
             Scope       = Format-NeboScope -Scope $p.scope
-            Role        = $roleNames[$roleId]
+            Role        = Get-NeboRoleName -SubscriptionId $sub -RoleId (($p.roleDefinitionId -split '/')[-1])
             Principal   = $principal
             Type        = $p.principalType
             Description = if ($description -and $description.Value) { $description.Value } else { '' }

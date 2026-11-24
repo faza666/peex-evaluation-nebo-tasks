@@ -31,8 +31,8 @@ Methods
   Role assignments are made through the Azure Resource Manager REST API (Invoke-AzRestMethod, PUT on
   Microsoft.Authorization/roleAssignments) with principalType 'User'. Because the type is given, nothing
   is looked up in Microsoft Entra ID, and you need no Entra permissions. The assignment names are derived
-  from scope, principal and role, so running the script again changes nothing. Role IDs come from
-  Get-AzRoleDefinition. Only built-in roles are used; no custom roles are created.
+  from scope, principal and role, so running the script again changes nothing. Role IDs are looked up by
+  name through the same API. Only built-in roles are used; no custom roles are created.
 
 What comes next
   The operator creates the state storage account and the managed identities in rg-nebo-mgmt, then asks
