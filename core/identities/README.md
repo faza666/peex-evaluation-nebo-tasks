@@ -8,8 +8,10 @@ Every managed identity NEBo uses, with the GitHub (and later AKS) federated cred
 |---|---|---|
 | `shared` | A → end of C | `mi-nebo-rbac` (approved role assignments), `mi-nebo-plan` (read-only plans), `mi-nebo-ops` (wake-up, sleep, guard, reports), `mi-nebo-core` (core deployer), `mi-nebo-ci` (image push) |
 | `stage-a` | A → end of B | `mi-nebo-stage-a` (deployer), `mi-nebo-cd-a` (Container Apps revisions), `mi-nebo-config` (Ansible), workload: `mi-nebo-menu-aca`, `mi-nebo-vm` |
-| `stage-b` | B → end of C | `mi-nebo-stage-b` (deployer), `mi-nebo-cd-b` (Helm), workload: `mi-nebo-aks`, `mi-nebo-kubelet`, `mi-nebo-menu-wi` |
-| `stage-c` | C | `mi-nebo-stage-c` (deployer), workload: `mi-nebo-appgw`, `mi-nebo-agic` |
+| `stage-b` | A → end of C (used from B) | `mi-nebo-stage-b` (deployer), `mi-nebo-cd-b` (Helm), workload: `mi-nebo-aks`, `mi-nebo-kubelet`, `mi-nebo-menu-wi` |
+| `stage-c` | A → end of C (used in C) | `mi-nebo-stage-c` (deployer), workload: `mi-nebo-appgw`, `mi-nebo-agic` |
+
+All four groups are active from Stage A, so the subscription owner approved every NEBo grant in a single `rbac.yml` run.
 
 ## Who applies it
 
@@ -29,7 +31,7 @@ Then ask the owner to run `core/scripts/owner/2-Grant-Seed.ps1`. It gives `mi-ne
 
 ## Changing it
 
-- **A new stage:** set its group's `active: true` and apply. Then request its roles in `core/rbac/grants.yaml`.
+- **A new identity:** add it to its group and apply. Then request its roles in `core/rbac/grants.yaml`.
 - **The end of a stage:** first turn the stage off in `core/rbac/grants.yaml` and let the owner approve the removals. Then set `active: false` here and apply. In that order, no role assignment is left pointing at a deleted identity.
 - **AKS workload identity (Stage B):** add `namespace:serviceaccount` entries under `kubernetes:` and pass the cluster's OIDC issuer, which contains the tenant ID, so it is never committed:
 

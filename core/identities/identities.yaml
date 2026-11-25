@@ -50,8 +50,8 @@ groups:
       mi-nebo-vm:
         purpose: The VM's identity (pulls images, sends metrics).
 
-  stage-b:  # B -> end of C
-    active: false
+  stage-b:  # A -> end of C; used from B. Active from A so all grants are approved in one run.
+    active: true
     identities:
       mi-nebo-stage-b:
         purpose: Deploys the aks stack (rg-nebo-stage-b).
@@ -67,8 +67,8 @@ groups:
         purpose: Workload identity of the menu pods (reads Key Vault secrets).
         kubernetes: []
 
-  stage-c:  # C only
-    active: false
+  stage-c:  # A -> end of C; used in C. Active from A so all grants are approved in one run.
+    active: true
     identities:
       mi-nebo-stage-c:
         purpose: Deploys the edge stack (rg-nebo-stage-c).

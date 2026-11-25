@@ -13,7 +13,10 @@
 #
 # Groups match identities.yaml and live as long as its groups do. Turning a group off removes its grants, which
 # the owner approves like any other change; do that before turning the same group off in identities.yaml.
-# A grant on a resource is added in the work item that creates the resource, because it must exist first.
+#
+# Every group is active from Stage A, so the owner approved all of NEBo's grants in one run. A resource that
+# doesn't exist yet can't be a scope, so those grants are on its resource group instead; the comment beside
+# each one names the resource it is for.
 
 groups:
   shared:  # A -> end of C
@@ -40,8 +43,6 @@ groups:
   stage-a:  # A -> end of B
     active: true
     grants:
-      # Added with the stacks that create the resources: mi-nebo-cd-a Container Apps Contributor on the two apps
-      # (aca); mi-nebo-config Network Contributor on the VM's NSG (vm).
       mi-nebo-stage-a:
         - Contributor @ rg:stage-a
         - Storage Blob Data Contributor @ container:tfstate-stage-a
@@ -53,18 +54,69 @@ groups:
         - Reader @ rg:stage-a
         - Virtual Machine Contributor @ rg:stage-a
         - Tag Contributor @ rg:stage-a
+      mi-nebo-cd-a:
+        - Container Apps Contributor @ rg:stage-a  # new revisions of menu-dev and menu-prod
       mi-nebo-config:
         - Reader @ rg:stage-a
+        - Network Contributor @ rg:stage-a  # opens SSH on the VM's NSG to the runner only
       mi-nebo-menu-aca:
         - AcrPull @ core/acr
         - Key Vault Secrets User @ core/kv
       mi-nebo-vm:
         - AcrPull @ core/acr
+        - Monitoring Metrics Publisher @ rg:stage-a  # Prometheus remote-write through the vm stack's DCR
 
-  stage-b:  # B -> end of C
-    active: false
-    grants: {}
+  stage-b:  # A -> end of C; used from B
+    active: true
+    grants:
+      mi-nebo-stage-b:
+        - Contributor @ rg:stage-b
+        - Storage Blob Data Contributor @ container:tfstate-stage-b
+        - Reader @ rg:core
+        - Log Analytics Contributor @ core/law  # Container insights
+        - Monitoring Contributor @ core/amw  # managed Prometheus: rules and the link to the workspace
+        - Managed Identity Operator @ mi:mi-nebo-aks
+        - Managed Identity Operator @ mi:mi-nebo-kubelet
+      mi-nebo-aks:
+        - Network Contributor @ rg:stage-b  # the cluster's own VNet
+        - Managed Identity Operator @ mi:mi-nebo-kubelet
+      mi-nebo-kubelet:
+        - AcrPull @ core/acr
+      mi-nebo-menu-wi:
+        - Key Vault Secrets User @ core/kv
+      mi-nebo-cd-b:
+        - Azure Kubernetes Service Cluster User Role @ rg:stage-b  # the cluster
+        - Azure Kubernetes Service RBAC Writer @ rg:stage-b  # the cluster: Helm releases
+      mi-nebo-ops:
+        - Reader @ rg:stage-b
+        - Azure Kubernetes Service Contributor Role @ rg:stage-b  # stop and start the cluster
+        - Tag Contributor @ rg:stage-b
+        - Log Analytics Reader @ core/law  # ops-report queries
+      operator:
+        - Azure Kubernetes Service RBAC Cluster Admin @ rg:stage-b  # the cluster
+        - Monitoring Data Reader @ core/amw  # PromQL queries
 
-  stage-c:  # C only
-    active: false
-    grants: {}
+  stage-c:  # A -> end of C; used in C
+    active: true
+    grants:
+      mi-nebo-stage-c:
+        - Contributor @ rg:stage-c
+        - Storage Blob Data Contributor @ container:tfstate-stage-c
+        - Reader @ rg:core
+        - Reader @ rg:stage-b  # reads the cluster and its VNet
+        - Network Contributor @ rg:stage-b  # the App Gateway subnet in the stage-b VNet
+        - Log Analytics Contributor @ core/law  # App Gateway diagnostics
+        - Azure Kubernetes Service RBAC Cluster Admin @ rg:stage-b  # the cluster: the AGIC Helm release
+        - Managed Identity Operator @ mi:mi-nebo-appgw
+      mi-nebo-appgw:
+        - Key Vault Secrets User @ core/kv  # the TLS certificate
+      mi-nebo-agic:
+        - Contributor @ rg:stage-c  # the App Gateway
+        - Network Contributor @ rg:stage-b  # the App Gateway subnet: joining it when AGIC rewrites the gateway
+        - Managed Identity Operator @ mi:mi-nebo-appgw  # the gateway carries this identity
+      mi-nebo-ops:
+        - Reader @ rg:stage-c
+        - Network Contributor @ rg:stage-c  # stop and start the App Gateway
+        - Tag Contributor @ rg:stage-c
+      operator:
+        - Key Vault Certificates Officer @ core/kv  # imports the TLS certificate
