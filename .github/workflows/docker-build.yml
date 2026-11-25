@@ -188,12 +188,12 @@ jobs:
     permissions:
       contents: read
       security-events: write  # upload results to the Security tab
-      id-token: write  # OIDC sign-in to Azure, used only to push from main
+      id-token: write  # OIDC sign-in to Azure as mi-nebo-ci, used only to push from main
     env:
       # Push only from main, and only images whose code passed the quality gate.
       PUBLISH: >-
         ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        && needs.sonar.outputs.gate == 'passed' && vars.AZURE_CLIENT_ID != '' }}
+        && needs.sonar.outputs.gate == 'passed' && vars.AZURE_CLIENT_ID_CI != '' }}
     outputs:
       version: ${{ steps.version.outputs.version }}
       critical: ${{ steps.trivy.outputs.critical }}
@@ -202,7 +202,7 @@ jobs:
       gate: ${{ steps.trivy.outputs.gate }}
       report: ${{ steps.report.outputs.artifact-url }}
       digest: ${{ steps.push.outputs.digest }}
-      registry_missing: ${{ steps.push.outputs.missing }}
+      registry_denied: ${{ steps.push.outputs.denied }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -219,9 +219,9 @@ jobs:
       - name: Registry name
         id: registry
         env:
-          SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         run: |
-          # The name wake-up.sh gives it: acrnebo + the first 6 hex characters of sha256(subscription ID).
+          # The name the core stack gives it: acrnebo + the first 6 hex characters of sha256(subscription ID).
           name="acrnebo$(printf '%s' "$SUBSCRIPTION_ID" | sha256sum | cut -c1-6)"
           echo "name=$name" >> "$GITHUB_OUTPUT"
           echo "server=$name.azurecr.io" >> "$GITHUB_OUTPUT"
@@ -280,9 +280,9 @@ jobs:
       - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906  # v3.1.0
         if: env.PUBLISH == 'true'
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ vars.AZURE_CLIENT_ID_CI }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Push to ACR
         id: push
         if: env.PUBLISH == 'true'
@@ -291,14 +291,16 @@ jobs:
           REPO: ${{ steps.build.outputs.repo }}
           REF: ${{ steps.build.outputs.ref }}
         run: |
-          if ! az acr show --name "$ACR_NAME" --only-show-errors -o none; then
-            echo "missing=true" >> "$GITHUB_OUTPUT"
-            echo "::error title=No registry::$ACR_NAME does not exist." \
-              "Run the wake-up workflow, which creates it, then re-run this job."
+          # mi-nebo-ci has AcrPush only, which can't read the registry resource, so az acr login builds the login
+          # server from the name instead of looking it up.
+          denied() {
+            echo "denied=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=No registry access::$1 Is the core stack applied, and is mi-nebo-ci's AcrPush" \
+              "grant in core/rbac/grants.yaml approved and applied?"
             exit 1
-          fi
-          az acr login --name "$ACR_NAME"
-          docker push --all-tags "$REPO"
+          }
+          az acr login --name "$ACR_NAME" --only-show-errors || denied "Could not sign in to $ACR_NAME."
+          docker push --all-tags "$REPO" || denied "The push to $ACR_NAME was refused."
           digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$REF")
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "Pushed $digest"

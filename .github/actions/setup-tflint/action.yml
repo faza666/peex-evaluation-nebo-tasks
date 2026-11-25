@@ -1,0 +1,33 @@
+name: setup-tflint
+description: >
+  Install a pinned TFLint release from GitHub and verify it against the SHA-256 recorded here, like
+  setup-trivy: a mutable tag can't change what this installs. The rulesets in .tflint.hcl are pinned there
+  and checked by tflint --init.
+
+inputs:
+  version:
+    description: TFLint version, without the leading v.
+    default: "0.66.0"
+  sha256:
+    description: SHA-256 of tflint_linux_amd64.zip, from that release's checksums.txt.
+    default: 22be11cadc25cd02401e94c0ccc91aa63467debb8485c2a755d98f4c0a9d1e2e
+
+runs:
+  using: composite
+  steps:
+    - name: Install TFLint ${{ inputs.version }}
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        zip="tflint_linux_amd64.zip"
+        dir="$RUNNER_TEMP/tflint-$VERSION"
+        mkdir -p "$dir"
+        curl -fsSL --retry 3 --output "$dir/$zip" \
+          "https://github.com/terraform-linters/tflint/releases/download/v${VERSION}/${zip}"
+        echo "$SHA256  $dir/$zip" | sha256sum --check --strict -
+        unzip -q -o "$dir/$zip" tflint -d "$dir"
+        echo "$dir" >> "$GITHUB_PATH"
+        "$dir/tflint" --version

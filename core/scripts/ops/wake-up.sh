@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Create the registry if missing, start the stage's compute, tag it to sleep after N hours, wait until it runs.
+# Start the stage's compute, tag it to sleep after N hours, and wait until it runs.
 #
-# Usage: core/scripts/ops/wake-up.sh [--targets all|vm,aks,appgw,acr] [--hours 1-12]
-#   --targets  what to wake: compute kinds to start, acr to create the registry (default: all)
+# Usage: core/scripts/ops/wake-up.sh [--targets all|vm,aks,appgw] [--hours 1-12]
+#   --targets  which compute kinds to start (default: all)
 #   --hours    when sleep-guard may put it back to sleep (default 4, maximum 12)
 set -euo pipefail
 # shellcheck source=core/scripts/ops/lib.sh
@@ -29,11 +29,6 @@ if ! [[ $hours =~ ^[0-9]+$ ]] || ((hours < 1 || hours > 12)); then
 fi
 
 until=$(iso_in_hours "$hours")
-
-# The registry first: CI pushes to it even in stages with no compute to start.
-if targets_include "$targets" acr; then
-  ensure_registry "$until"
-fi
 
 rows=$(nebo_compute "$targets")
 compute=()

@@ -1,0 +1,355 @@
+name: terraform
+
+# Every Terraform stack except core/identities (you apply it from your machine) and core/rbac (rbac.yml); plan
+# sections 3.3 and 3.5. core/scripts/ci/tf-stacks.sh finds the stacks: core/infra, and infra-<name>/ in the
+# stage folders, each with a GitHub environment (core, stage-a, stage-b, stage-c).
+#   stacks   which stacks the run covers: the changed ones, or the one picked in a manual run. Before anything
+#            is applied or destroyed, checks that their environments need your approval
+#   check    fmt, validate, TFLint, Trivy, then a read-only plan as mi-nebo-plan: -refresh=false, because Reader
+#            can't list keys, and -lock=false, because it can only read the state. The changes go to the job
+#            summary and, on pull requests, to a comment, by resource address only
+#   apply    on main, or a manual apply: in the stack's environment, once you approve it there, as the
+#            resource group's deployer (AZURE_CLIENT_ID_<DEPLOYER>). Plans again with a refresh, then applies
+#   destroy  manual only, with the stack's name typed to confirm. Destroys, then checks that nothing tagged
+#            nebo:stack=<name> is left
+# No plan file is uploaded anywhere, because the repository and its artifacts are public.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - core/infra/**
+      - stage-*/*/infra-*/**
+      - .tflint.hcl
+      - core/scripts/ci/tf-*
+      - core/scripts/ci/trivy-iac.sh
+      - .github/actions/setup-tflint/**
+      - .github/actions/setup-trivy/**
+      - .github/workflows/terraform.yml
+  push:
+    branches: [main]
+    paths:
+      - core/infra/**
+      - stage-*/*/infra-*/**
+      - .tflint.hcl
+      - core/scripts/ci/tf-*
+      - core/scripts/ci/trivy-iac.sh
+      - .github/actions/setup-tflint/**
+      - .github/actions/setup-trivy/**
+      - .github/workflows/terraform.yml
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: "Stack: core, or <name> for a stage's infra-<name>/ folder"
+        type: string
+        required: true
+        default: core
+      action:
+        description: "plan only, apply (after your approval) or destroy"
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+      confirm:
+        description: "For destroy: type the stack's name again"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a pull request cancels its older checks. Runs on main queue per stack, in the jobs below.
+  group: terraform-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  ARM_USE_OIDC: "true"
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+jobs:
+  stacks:
+    # Pull requests from forks get no Azure sign-in.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read  # the environments' protection rules
+    outputs:
+      stacks: ${{ steps.stacks.outputs.stacks }}
+      count: ${{ steps.stacks.outputs.count }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the changed files between two commits
+          persist-credentials: false
+      - name: Find the stacks
+        id: stacks
+        env:
+          EVENT: ${{ github.event_name }}
+          STACK: ${{ inputs.stack }}
+          ACTION: ${{ inputs.action }}
+          CONFIRM: ${{ inputs.confirm }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          case $EVENT in
+            workflow_dispatch)
+              if [[ $ACTION == destroy && $CONFIRM != "$STACK" ]]; then
+                echo "::error title=Not confirmed::To destroy $STACK, type its name in the confirm field." \
+                  "Nothing was done."
+                exit 1
+              fi
+              core/scripts/ci/tf-stacks.sh one "$STACK"
+              ;;
+            pull_request)
+              core/scripts/ci/tf-stacks.sh changed "$(git merge-base "$PR_BASE" "$PR_HEAD")" "$PR_HEAD" all-on-shared
+              ;;
+            push)
+              core/scripts/ci/tf-stacks.sh changed "$BEFORE" "$GITHUB_SHA"
+              ;;
+          esac
+      - name: Check that the environments need your approval
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.action != 'plan')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STACKS: ${{ steps.stacks.outputs.stacks }}
+        run: |
+          # GitHub creates a missing environment on first use, without any rules: apply would then run
+          # without anyone approving it. Stop before that.
+          # shellcheck disable=SC2016  # $rules is jq, not shell
+          for env in $(jq -r '.[].environment' <<<"$STACKS" | sort -u); do
+            if ! gh api "repos/$GITHUB_REPOSITORY/environments/$env" --jq '
+                (.protection_rules // []) as $rules
+                | ([$rules[] | select(.type == "required_reviewers" and (.reviewers | length) > 0)] | length) > 0
+                  and ([$rules[] | select(.type == "branch_policy")] | length) > 0
+                  and .can_admins_bypass == false' 2>/dev/null | grep -qx true; then
+              echo "::error title=$env environment not protected::The $env environment must exist with a" \
+                "required reviewer, a branch policy and no admin bypass. Nothing was applied."
+              exit 1
+            fi
+          done
+
+  check:
+    needs: stacks
+    if: needs.stacks.outputs.count != '0' && inputs.action != 'destroy'
+    name: check (${{ matrix.stack }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.stacks.outputs.stacks) }}
+    permissions:
+      contents: read
+      id-token: write       # OIDC sign-in as mi-nebo-plan
+      pull-requests: write  # the change list as a comment
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      # Declared by core only; other stacks ignore them.
+      TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
+      TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      STACK: ${{ matrix.stack }}
+      DIR: ${{ matrix.dir }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: ./.github/actions/setup-tflint
+      - uses: ./.github/actions/setup-trivy
+      - name: Format, init and validate
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform fmt -check -diff
+          terraform init -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl"
+          terraform validate -no-color
+      - name: TFLint
+        working-directory: ${{ matrix.dir }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # ruleset download without the anonymous rate limit
+        run: |
+          tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --config="$GITHUB_WORKSPACE/.tflint.hcl" --format compact
+      - name: Trivy misconfiguration gate
+        env:
+          FAIL_ON: ${{ vars.TRIVY_IAC_FAIL_ON || 'HIGH,CRITICAL' }}  # set the variable to "none" to report only
+        run: core/scripts/ci/trivy-iac.sh "$DIR"
+      - name: Plan (read-only, without refresh or the state lock)
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform plan -refresh=false -lock=false -no-color -out=tfplan
+          terraform show -json tfplan >"$RUNNER_TEMP/plan.json"
+      - name: Changes
+        run: core/scripts/ci/tf-changes.sh "$RUNNER_TEMP/plan.json" "$STACK"
+      - name: Job summary
+        if: ${{ !cancelled() && hashFiles('tf-changes.md') != '' }}
+        run: |
+          { echo "## Stack $STACK: plan without refresh"; echo; cat tf-changes.md; } >>"$GITHUB_STEP_SUMMARY"
+      - name: Comment on the pull request
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && hashFiles('tf-changes.md') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          marker="<!-- nebo-terraform-plan:$STACK -->"
+          note="From the [plan run]($RUN_URL), without refresh."
+          note+=" After the merge, apply plans again and waits for your approval."
+          # shellcheck disable=SC2016  # the backticks are Markdown
+          body=$(printf '%s\n### Stack `%s` after this pull request\n\n%s\n\n%s\n' "$marker" "$STACK" \
+            "$(cat tf-changes.md)" "$note")
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+            --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" |
+            head -n1)
+          if [[ -n $id ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null
+          fi
+
+  apply:
+    needs: [stacks, check]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.action == 'apply')
+    name: apply (${{ matrix.stack }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.stacks.outputs.stacks) }}
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: terraform-state-${{ matrix.stack }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write  # OIDC sign-in as the deployer
+    env:
+      ARM_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', matrix.deployer)] }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
+      TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      STACK: ${{ matrix.stack }}
+      DEPLOYER: ${{ matrix.deployer }}
+    steps:
+      - name: Check the deployer
+        run: |
+          if [[ -z $ARM_CLIENT_ID ]]; then
+            echo "::error title=No deployer::The repository variable AZURE_CLIENT_ID_$DEPLOYER is not set."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - name: Plan
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform init -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl"
+          terraform plan -no-color -out=tfplan
+          terraform show -json tfplan >"$RUNNER_TEMP/plan.json"
+      - name: Changes
+        id: changes
+        run: core/scripts/ci/tf-changes.sh "$RUNNER_TEMP/plan.json" "$STACK"
+      - name: Apply
+        if: steps.changes.outputs.count != '0'
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform apply -no-color tfplan
+          terraform output -no-color  # IDs name the subscription, so this stays in the masked log
+      - name: Job summary
+        if: ${{ !cancelled() && hashFiles('tf-changes.md') != '' }}
+        env:
+          APPLIED: ${{ steps.changes.outputs.count != '0' && job.status == 'success' }}
+        run: |
+          {
+            echo "## Stack $STACK: $([[ $APPLIED == true ]] && echo applied || echo "not applied")"
+            echo
+            cat tf-changes.md
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  destroy:
+    needs: stacks
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.action == 'destroy'
+    name: destroy (${{ matrix.stack }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.stacks.outputs.stacks) }}
+    environment: ${{ matrix.environment }}
+    concurrency:
+      group: terraform-state-${{ matrix.stack }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write  # OIDC sign-in as the deployer
+    env:
+      ARM_CLIENT_ID: ${{ vars[format('AZURE_CLIENT_ID_{0}', matrix.deployer)] }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
+      TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      STACK: ${{ matrix.stack }}
+      DEPLOYER: ${{ matrix.deployer }}
+    steps:
+      - name: Check the deployer
+        run: |
+          if [[ -z $ARM_CLIENT_ID ]]; then
+            echo "::error title=No deployer::The repository variable AZURE_CLIENT_ID_$DEPLOYER is not set."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - name: Plan the destroy
+        working-directory: ${{ matrix.dir }}
+        run: |
+          terraform init -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl"
+          terraform plan -destroy -no-color -out=tfplan
+          terraform show -json tfplan >"$RUNNER_TEMP/plan.json"
+      - name: Changes
+        run: core/scripts/ci/tf-changes.sh "$RUNNER_TEMP/plan.json" "$STACK"
+      - name: Destroy
+        working-directory: ${{ matrix.dir }}
+        run: terraform apply -no-color tfplan
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906  # v3.1.0
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+      - name: Check that nothing of the stack is left
+        run: |
+          left=$(az resource list --tag "nebo:stack=$STACK" --query "[].name" -o tsv --only-show-errors)
+          if [[ -n $left ]]; then
+            echo "::error title=Resources left::Still tagged nebo:stack=$STACK after the destroy:" \
+              "$(paste -sd, <<<"$left")"
+            exit 1
+          fi
+          echo "Nothing tagged nebo:stack=$STACK is left."
+      - name: Job summary
+        if: ${{ !cancelled() && hashFiles('tf-changes.md') != '' }}
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          {
+            if [[ $RESULT == success ]]; then result="complete, nothing left"; else result=failed; fi
+            echo "## Stack $STACK: destroy $result"
+            echo
+            cat tf-changes.md
+          } >>"$GITHUB_STEP_SUMMARY"

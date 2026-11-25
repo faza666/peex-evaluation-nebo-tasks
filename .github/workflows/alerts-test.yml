@@ -1,0 +1,59 @@
+name: alerts-test
+
+# Send Azure Monitor's sample alert, in the common alert schema, to the same receivers as the core Action Group
+# (ag-nebo-alerts): an email to the notification address and, once TEAMS_ALERTS_WEBHOOK_URL is set, the Teams
+# alerts flow, which turns it into a card. Runs as mi-nebo-core in environment core, so it waits for your
+# approval like a core apply. The test API takes the receivers in the request, so they come from the same
+# secrets the core stack uses, never from a command line.
+on:
+  workflow_dispatch:
+    inputs:
+      alert_type:
+        description: "Which sample alert Azure sends"
+        type: choice
+        options: [metricstaticthreshold, logalertv2, budget, activitylog, servicehealth]
+        default: metricstaticthreshold
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.ref == 'refs/heads/main' && vars.AZURE_CLIENT_ID_CORE != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: core
+    permissions:
+      contents: read
+      id-token: write  # OIDC sign-in as mi-nebo-core
+    steps:
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906  # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_CORE }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Send the sample alert
+        env:
+          ALERT_TYPE: ${{ inputs.alert_type }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          WEBHOOK: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+          SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          body="$RUNNER_TEMP/alert-test.json"
+          jq -n '{
+            alertType: env.ALERT_TYPE,
+            emailReceivers: [{name: "operator", emailAddress: env.NOTIFY_EMAIL, useCommonAlertSchema: true}],
+            webhookReceivers: (if (env.WEBHOOK // "") == "" then []
+              else [{name: "teams", serviceUri: env.WEBHOOK, useCommonAlertSchema: true}] end)
+          }' >"$body"
+          group="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/rg-nebo-core"
+          url="$group/providers/Microsoft.Insights/actionGroups/ag-nebo-alerts/createNotifications"
+          az rest --method post --only-show-errors -o none --body "@$body" --url "$url?api-version=2023-01-01"
+          rm -f "$body"
+          teams="a Teams card"
+          [[ -n $WEBHOOK ]] || teams="no Teams card, because TEAMS_ALERTS_WEBHOOK_URL is not set"
+          {
+            echo "## Sample $ALERT_TYPE alert sent"
+            echo
+            echo "Azure accepted it: expect an email to the notification address and $teams within a few minutes."
+          } >>"$GITHUB_STEP_SUMMARY"

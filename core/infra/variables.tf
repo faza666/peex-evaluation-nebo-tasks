@@ -1,42 +1,33 @@
-variable "location" {
-  description = "Azure region for every NEBo resource."
-  type        = string
-  default     = "swedencentral"
-}
+# The two addresses reach Terraform as TF_VAR_ values from GitHub secrets in terraform.yml (NOTIFY_EMAIL and
+# TEAMS_ALERTS_WEBHOOK_URL); neither is ever committed or printed.
 
 variable "notify_email" {
-  description = "Where alerts and budget warnings are emailed. Set it in the git-ignored notify.auto.tfvars; never commit it."
+  description = "Where alerts and budget warnings are emailed: the operator's work address, from the secret NOTIFY_EMAIL."
   type        = string
   sensitive   = true
 
   validation {
     condition     = can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.notify_email))
-    error_message = "notify_email must be an email address."
+    error_message = "notify_email must be an email address: is the secret NOTIFY_EMAIL set?"
   }
 }
 
-variable "github_repo" {
-  description = "The GitHub repository (owner/name) whose workflows may sign in to Azure through OIDC."
+variable "alerts_webhook_url" {
+  description = "Teams Workflows webhook for Azure Monitor alerts, from the secret TEAMS_ALERTS_WEBHOOK_URL. Empty: email only."
   type        = string
-  default     = "faza666/peex-evaluation-nebo-tasks"
-}
+  sensitive   = true
+  default     = ""
 
-variable "github_owner_id" {
-  description = "Numeric ID of the repository owner. GitHub puts it in the OIDC subject (owner@id), so a re-registered name can't inherit access."
-  type        = number
-  default     = 56168853
-}
-
-variable "github_repo_id" {
-  description = "Numeric ID of the repository, also part of the OIDC subject (name@id)."
-  type        = number
-  default     = 1459147871
+  validation {
+    condition     = var.alerts_webhook_url == "" || startswith(var.alerts_webhook_url, "https://")
+    error_message = "alerts_webhook_url must be an https:// URL, or empty."
+  }
 }
 
 variable "budget_amount" {
-  description = "Monthly budget for the subscription, in the billing currency."
+  description = "Monthly budget for rg-nebo-core, in the billing currency. The registry alone is about 5."
   type        = number
-  default     = 50
+  default     = 10
 }
 
 variable "budget_start_date" {

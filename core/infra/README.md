@@ -1,33 +1,39 @@
 # Stack: core
 
-Shared by every stage: Log Analytics, Azure Monitor workspace, Key Vault, Action Group, budget, the GitHub OIDC identity and Communication Services Email. Lives from Stage A to the end of Stage C. The container registry lives in the same resource group but outside Terraform: `core/scripts/ops/wake-up.sh` creates it when it is missing.
+Shared by every stage, in `rg-nebo-core`: the container registry, Log Analytics, Azure Monitor workspace, Key Vault, the alerts Action Group, an RG budget and Communication Services Email. Lives from Stage A to the end of Stage C.
+
+The Subscription Owner created the resource group. This stack only fills it, and `terraform.yml` applies it as `mi-nebo-core`. It holds no identities and no role assignments: those live in `core/identities` and `core/rbac/grants.yaml`.
 
 | Resource | Name | Notes |
 |---|---|---|
-| Resource group | `rg-nebo-core` | Every resource is tagged `nebo:stack=core` |
+| Container registry | `acrnebo<suffix>` | Basic, **permanent**. Entra ID only: no admin user, and Basic has no anonymous pull. Repository `menu`, tags `v<version>` and `sha-<7>`. `docker-build.yml` pushes as `mi-nebo-ci` |
 | Log Analytics | `law-nebo-core` | 30-day retention, 0.5 GB/day ingestion cap |
 | Azure Monitor workspace | `amw-nebo-core` | Managed Prometheus, from Stage B |
-| Key Vault | `kv-nebo-<suffix>` | RBAC mode, no purge protection, so teardown and rebuild work |
-| Container registry | `acrnebo<suffix>` | **Not in Terraform; exists only while you work.** `wake-up.sh` creates it (Basic, Entra ID only: no admin user, no anonymous pull; tagged `nebo:stack=core`) and `sleep.sh` deletes it with its images. Repository `menu`, tags `v<version>` and `sha-<7>` |
-| Action Group | `ag-nebo-email` | Emails the notification address |
-| Budget | `budget-nebo` | Subscription, 50 per month, alerts at 50, 80 and 100% |
+| Key Vault | `kv-nebo-<suffix>` | RBAC mode, no purge protection, so the end-of-C teardown works. No firewall: Container Apps have no fixed outbound IP, so access is by role only |
+| Action Group | `ag-nebo-alerts` | Email to the notification address, and a Teams Workflows webhook once `TEAMS_ALERTS_WEBHOOK_URL` is set |
+| Budget | `budget-nebo-core` | This resource group, 10 per month, alerts at 50, 80 and 100% to the Action Group |
 | Communication Services | `acs-nebo-<suffix>`, `ecs-nebo-<suffix>` | Azure-managed sender domain, data in Europe |
-| GitHub identity | `id-nebo-github` | OIDC for `dev`, `prod`, `main` and pull requests; Reader on the subscription, Contributor on this group, Key Vault Secrets User, AcrPush on the subscription (the registry comes and goes outside Terraform) |
 
-`<suffix>` is the first 6 hex characters of the SHA-256 of the subscription ID, the same as the state storage account.
+`<suffix>` is the first 6 hex characters of the SHA-256 of the subscription ID, the same as the state storage account. Every resource is tagged `nebo:stack=core`. The ones that grants point at also carry `nebo:scope` (`acr`, `kv`, `law`, `amw`, `acs`), which is how `core/<tag>` scopes in `core/rbac/grants.yaml` find them.
 
-## Usage
+## How it is applied
 
-```sh
-export ARM_SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-cp notify.auto.tfvars.example notify.auto.tfvars   # then put your address in it; the file is git-ignored
-terraform init -backend-config=backend.hcl
-terraform plan -out core.tfplan
-terraform apply core.tfplan
+- **Pull request:** `terraform.yml` runs fmt, validate, TFLint and Trivy, then a read-only plan as `mi-nebo-plan`. The resources that would change are listed in a comment, by address only.
+- **Merge to `main`:** `apply (core)` waits in the `core` environment until you approve it. It then plans again with a refresh, as `mi-nebo-core`, and applies.
+- **Manual run:** `plan`, `apply` or `destroy` of `core`. Destroy needs `core` typed in the confirm field and ends with a check that nothing tagged `nebo:stack=core` is left.
+
+The notification address and the Teams alerts webhook reach Terraform as `TF_VAR_notify_email` and `TF_VAR_alerts_webhook_url`, from the secrets `NOTIFY_EMAIL` and `TEAMS_ALERTS_WEBHOOK_URL`. Both are sensitive, so plans and logs show neither. They are still visible on the Action Group to anyone with Reader on `rg-nebo-core`, and the webhook URL lets its holder post to the alerts chat.
+
+**On your machine** you can't apply this stack, because `mi-nebo-core` holds its rights. You can still validate it and read its outputs:
+
+```powershell
+terraform init "-backend-config=backend.hcl"
+terraform validate
+terraform output
 ```
 
-The outputs (client, tenant and subscription IDs, email endpoint and sender) are not secret and become GitHub repository variables. `acr_name` is the name `wake-up.sh` gives the registry; CI derives the same name from the subscription ID, so it needs no variable.
+The outputs aren't secret. `acs_endpoint` and `acs_sender` go into the repository variables `ACS_ENDPOINT` and `ACS_SENDER`.
 
-**Teardown:** run `sleep.sh` (or the `sleep` workflow) first. A registry left in the group blocks `terraform destroy`, because the provider won't delete a resource group that still holds resources it doesn't manage. The notification address is only stored in `notify.auto.tfvars` and the GitHub secret `NOTIFY_EMAIL`.
+**Key Vault rebuilds:** `mi-nebo-core` has no rights on the subscription's deleted vaults, so Terraform neither purges nor recovers one. A destroyed vault stays soft-deleted for 7 days, and a rebuild within that time needs a new name or the Subscription Owner's purge.
 
-**OIDC subjects:** GitHub names the repository with immutable IDs in the token subject, e.g. `repo:faza666@56168853/peex-evaluation-nebo-tasks@1459147871:ref:refs/heads/main`, so the federated credentials use that format (`github_owner_id`, `github_repo_id`). A re-created repository with the same name gets a new ID and no access.
+**Teardown** is the end of Stage C only: destroy `core` from `terraform.yml`, after every stage stack is gone.

@@ -4,12 +4,11 @@
 # Every NEBo resource carries the tag nebo:stack=<name>, so the scripts find what exists in
 # the current stage with one Azure Resource Graph query and need no edits between stages.
 # Compute that can sleep: VMs (deallocate), AKS clusters (stop), Application Gateways (stop).
-# The container registry (acr) has no sleep state: wake-up creates it and sleep deletes it.
+# The container registry is permanent (core stack), so these scripts never touch it.
 
 TAG_STACK="nebo:stack"
 TAG_SLEEP_AFTER="nebo:sleep-after"
 TAG_FIRST_SEEN="nebo:first-seen-awake"
-CORE_RG="rg-nebo-core"
 
 log() { printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 
@@ -77,72 +76,10 @@ to_array() { # array-name "$rows"
   return 0
 }
 
-# Validate a --targets value: "all" or a comma-separated list of vm, aks, appgw, acr.
+# Validate a --targets value: "all" or a comma-separated list of vm, aks, appgw.
 check_targets() {
-  [[ $1 == all || $1 =~ ^(vm|aks|appgw|acr)(,(vm|aks|appgw|acr))*$ ]] ||
-    { log "ERROR: --targets must be 'all' or a comma-separated list of vm, aks, appgw, acr (got '$1')"; return 1; }
-}
-
-# True if a --targets value includes the given kind.
-targets_include() { # targets kind
-  [[ $1 == all || ,$1, == *,$2,* ]]
-}
-
-# The suffix shared with the Terraform stacks, bootstrap-state.sh and docker-build.yml:
-# the first 6 hex characters of sha256(subscription ID).
-nebo_suffix() {
-  local sub
-  sub=$(az account show --query id -o tsv --only-show-errors)
-  printf '%s' "$sub" | sha256sum | cut -c1-6
-}
-
-# The container registry lives outside Terraform and only while someone works: wake-up
-# creates it, sleep deletes it with its images. CI rebuilds any image from its commit on main.
-registry_name() { echo "acrnebo$(nebo_suffix)"; }
-
-registry_exists() { # name
-  az acr show --resource-group "$CORE_RG" --name "$1" --only-show-errors -o none 2>/dev/null
-}
-
-# Create the registry if it is missing: Basic, Entra ID only, tagged with the core stack.
-# With a sleep-after time, tag it so sleep-guard deletes it then, like compute it puts to sleep.
-ensure_registry() { # [sleep-after]
-  local name sleep_after=${1:-} id
-  local tags=("$TAG_STACK=core")
-  name=$(registry_name)
-  if [[ -n $sleep_after ]]; then
-    tags+=("$TAG_SLEEP_AFTER=$sleep_after")
-  fi
-  if registry_exists "$name"; then
-    log "$name: registry exists"
-    if [[ -n $sleep_after ]]; then
-      id=$(az acr show --resource-group "$CORE_RG" --name "$name" --query id -o tsv --only-show-errors)
-      set_tags "$id" "$TAG_SLEEP_AFTER=$sleep_after" "$TAG_FIRST_SEEN="
-    fi
-  else
-    log "$name: creating the container registry (Basic) in $CORE_RG"
-    az acr create --resource-group "$CORE_RG" --name "$name" --sku Basic --admin-enabled false \
-      --tags "${tags[@]}" --only-show-errors -o none
-    log "$name: created (empty: run docker-build.yml on main to rebuild and push the current image)"
-    summary "Created the container registry \`$name\`. It starts empty: run **docker-build** on \`main\` to push the current image."
-  fi
-  if [[ -n $sleep_after ]]; then
-    log "$name: sleep-guard deletes it after $sleep_after"
-  fi
-}
-
-# Delete the registry entirely, images included.
-delete_registry() {
-  local name
-  name=$(registry_name)
-  if ! registry_exists "$name"; then
-    log "$name: no registry to delete"
-    return 0
-  fi
-  log "$name: deleting the container registry and its images"
-  az acr delete --resource-group "$CORE_RG" --name "$name" --yes --only-show-errors -o none
-  log "$name: deleted"
-  summary "Deleted the container registry \`$name\` and its images."
+  [[ $1 == all || $1 =~ ^(vm|aks|appgw)(,(vm|aks|appgw))*$ ]] ||
+    { log "ERROR: --targets must be 'all' or a comma-separated list of vm, aks, appgw (got '$1')"; return 1; }
 }
 
 set_tags() { # resource-id key=value...
