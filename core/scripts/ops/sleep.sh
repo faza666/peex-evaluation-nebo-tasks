@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Stop or deallocate the stage's compute (state is kept) and delete the container registry.
+# Stop or deallocate the stage's compute; state and configuration are kept.
 #
-# Usage: core/scripts/ops/sleep.sh [--targets all|vm,aks,appgw,acr] [--no-wait]
-#   --targets  what to put to sleep: compute kinds to stop, acr to delete the registry (default: all)
+# Usage: core/scripts/ops/sleep.sh [--targets all|vm,aks,appgw] [--no-wait]
+#   --targets  which compute kinds to put to sleep (default: all)
 #   --no-wait  return as soon as the stop requests are sent
 set -euo pipefail
 # shellcheck source=core/scripts/ops/lib.sh
@@ -42,12 +42,6 @@ else
     printf '%s\n' "${awake[@]}" | wait_for stopped 900
   fi
   summary "### Put ${#awake[@]} resource(s) to sleep"
-fi
-
-# The registry goes entirely, images included: it is billed per day, and the next wake-up
-# creates it again for CI to push to.
-if targets_include "$targets" acr; then
-  delete_registry
 fi
 
 "$(dirname "$0")/status.sh"

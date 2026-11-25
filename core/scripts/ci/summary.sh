@@ -61,8 +61,8 @@ else
       why="the Trivy gate failed"
     elif [[ $(out sonar gate) != passed ]]; then
       why="the quality gate did not pass"
-    elif [[ $(out image registry_missing) == true ]]; then
-      why="the registry does not exist yet: run the wake-up workflow"
+    elif [[ $(out image registry_denied) == true ]]; then
+      why="no access to the registry: is core applied and mi-nebo-ci's AcrPush grant approved?"
     else
       why="the push did not complete"
     fi

@@ -1,33 +1,24 @@
-# None of these are secret: they become GitHub repository variables.
+# None of these are secret. The resource IDs name the subscription, so they show only in the masked run log
+# and in `terraform output` on your machine, never in a job summary.
 
-output "azure_client_id" {
-  description = "Client ID of the GitHub OIDC identity (AZURE_CLIENT_ID)."
-  value       = azurerm_user_assigned_identity.github.client_id
+output "acr_name" {
+  description = "Container registry name; images are <name>.azurecr.io/menu. docker-build.yml derives the same name."
+  value       = azurerm_container_registry.core.name
 }
 
-output "azure_tenant_id" {
-  description = "Tenant ID (AZURE_TENANT_ID)."
-  value       = data.azurerm_client_config.current.tenant_id
-}
-
-output "azure_subscription_id" {
-  description = "Subscription ID (AZURE_SUBSCRIPTION_ID)."
-  value       = data.azurerm_subscription.current.subscription_id
+output "acr_login_server" {
+  description = "Container registry login server."
+  value       = azurerm_container_registry.core.login_server
 }
 
 output "acs_endpoint" {
-  description = "Communication Services endpoint used to send email (ACS_ENDPOINT)."
+  description = "Communication Services endpoint used to send email (repository variable ACS_ENDPOINT)."
   value       = "https://${azurerm_communication_service.core.hostname}"
 }
 
 output "acs_sender" {
-  description = "Sender address of the Azure-managed email domain (ACS_SENDER)."
+  description = "Sender address of the Azure-managed email domain (repository variable ACS_SENDER)."
   value       = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed.mail_from_sender_domain}"
-}
-
-output "acr_name" {
-  description = "Name of the container registry that wake-up.sh creates in rg-nebo-core; images are <name>.azurecr.io/menu."
-  value       = "acrnebo${local.suffix}"
 }
 
 output "key_vault_name" {
@@ -46,6 +37,6 @@ output "monitor_workspace_id" {
 }
 
 output "action_group_id" {
-  description = "Resource ID of the email Action Group, used by alert rules in later stacks."
-  value       = azurerm_monitor_action_group.email.id
+  description = "Resource ID of the alerts Action Group (email + Teams), used by alert rules and budgets in later stacks."
+  value       = azurerm_monitor_action_group.alerts.id
 }
