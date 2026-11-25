@@ -26,14 +26,14 @@ groups:
         - AcrPush @ core/acr
       mi-nebo-ops:
         - Reader @ rg:core
-      # Reader on every stage group from the start, and kept here rather than in the stage's own group, so you can
-      # still check a stage's teardown after its grants are gone. Remove a line once the subscription owner has
-      # deleted that group: the assignment goes with it, so nothing is left to approve.
+      # Contributor on core and every stage group from the start, and kept here rather than in the stage's own
+      # group, so you keep access to a stage after its grants are gone. Remove a stage line once the subscription
+      # owner has deleted that group: the assignment goes with it, so nothing is left to approve.
       operator:
-        - Reader @ rg:core
-        - Reader @ rg:stage-a
-        - Reader @ rg:stage-b
-        - Reader @ rg:stage-c
+        - Contributor @ rg:core
+        - Contributor @ rg:stage-a
+        - Contributor @ rg:stage-b
+        - Contributor @ rg:stage-c
         - Key Vault Secrets Officer @ core/kv
         - Log Analytics Reader @ core/law
 
