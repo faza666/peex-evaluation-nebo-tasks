@@ -54,13 +54,18 @@ rm rbac-checked.json
 count=$(jq length rbac-changes.json)
 adds=$(jq '[.[] | select(.action == "add")] | length' rbac-changes.json)
 removes=$(jq '[.[] | select(.action == "remove")] | length' rbac-changes.json)
+edits=$(jq '[.[] | select(.action == "change")] | length' rbac-changes.json)
 digest=$(sha256sum rbac-changes.json | cut -c1-64)
 
 {
   if ((count == 0)); then
     echo "No changes: the role assignments in Azure match \`core/rbac/grants.yaml\`."
   else
-    echo "**$count change(s)** to NEBo role assignments: $adds to add, $removes to remove."
+    if ((edits)); then
+      echo "**$count change(s)** to NEBo role assignments: $adds to add, $edits to change, $removes to remove."
+    else
+      echo "**$count change(s)** to NEBo role assignments: $adds to add, $removes to remove."
+    fi
     echo
     echo "| | Identity | Role | Scope |"
     echo "|---|---|---|---|"
@@ -68,6 +73,11 @@ digest=$(sha256sum rbac-changes.json | cut -c1-64)
       | (if .action == "add" then "➕ add" elif .action == "remove" then "➖ remove" else "✏️ change" end) as $icon
       | "| \($icon) | \(.principal) | \(.role) | \(.scope) |"' rbac-changes.json
     echo
+    if ((edits)); then
+      echo "A change only updates an assignment's description (its group in \`grants.yaml\`); the role, scope and" \
+        "identity stay the same."
+      echo
+    fi
     echo "Digest \`${digest::12}\`: the apply job re-plans and stops if its list has a different digest."
   fi
 } >rbac-changes.md

@@ -62,8 +62,22 @@ def change_table(changes):
 
 def counts(changes):
     adds = sum(1 for c in changes if c["action"] == "add")
+    edits = sum(1 for c in changes if c["action"] == "change")
     removes = sum(1 for c in changes if c["action"] == "remove")
-    return adds, removes
+    return adds, edits, removes
+
+
+def breakdown(adds, edits, removes):
+    """'7 to add, 0 to remove', with 'N to change' between them only when there are changes."""
+    parts = ["{} to add".format(adds)]
+    if edits:
+        parts.append("{} to change".format(edits))
+    parts.append("{} to remove".format(removes))
+    return ", ".join(parts)
+
+
+# Role assignments can only change in place in their description (NEBo sets no conditions).
+CHANGE_NOTE = " A change only updates an assignment's description; the role, scope and identity stay the same."
 
 
 def plural(n, word):
@@ -81,12 +95,13 @@ def change_fact(event, pr_number, pr_title):
 
 
 def request_sentence(kind, changes):
-    adds, removes = counts(changes)
+    adds, edits, removes = counts(changes)
+    note = CHANGE_NOTE if edits else ""
     if kind == "drift":
         return (
             "The weekly check found that NEBo's role assignments in Azure no longer match grants.yaml. "
-            "Approving the run restores them: {} to add, {} to remove. Nothing changes until you approve it "
-            "in GitHub.".format(adds, removes)
+            "Approving the run restores them: {}. Nothing changes until you approve it "
+            "in GitHub.{}".format(breakdown(adds, edits, removes), note)
         )
     if removes == 0 and adds == len(changes):
         return (
@@ -98,8 +113,10 @@ def request_sentence(kind, changes):
             plural(removes, "role assignment")
         )
     return (
-        "NEBo asks for **{}** to role assignments in your subscription: {} to add, {} to remove. "
-        "Nothing changes until you approve the run in GitHub.".format(plural(len(changes), "change"), adds, removes)
+        "NEBo asks for **{}** to role assignments in your subscription: {}. "
+        "Nothing changes until you approve the run in GitHub.{}".format(
+            plural(len(changes), "change"), breakdown(adds, edits, removes), note
+        )
     )
 
 
