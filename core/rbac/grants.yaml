@@ -19,28 +19,34 @@ groups:
   shared:  # A -> end of C
     active: true
     grants:
-      # Added with the core stack: mi-nebo-ci AcrPush @ core/acr, operator Key Vault Secrets Officer @ core/kv and
-      # Log Analytics Reader @ core/law.
       mi-nebo-core:
         - Contributor @ rg:core
         - Storage Blob Data Contributor @ container:tfstate-core
+      mi-nebo-ci:
+        - AcrPush @ core/acr
       mi-nebo-ops:
         - Reader @ rg:core
-      operator:  # Reader on stage-b and stage-c from the start, so all five groups show up in the portal
+      # Reader on every stage group from the start, and kept here rather than in the stage's own group, so you can
+      # still check a stage's teardown after its grants are gone. Remove a line once the subscription owner has
+      # deleted that group: the assignment goes with it, so nothing is left to approve.
+      operator:
         - Reader @ rg:core
+        - Reader @ rg:stage-a
         - Reader @ rg:stage-b
         - Reader @ rg:stage-c
+        - Key Vault Secrets Officer @ core/kv
+        - Log Analytics Reader @ core/law
 
   stage-a:  # A -> end of B
     active: true
     grants:
-      # Added with the stacks that create the resources: mi-nebo-stage-a Log Analytics Contributor @ core/law;
-      # mi-nebo-cd-a Container Apps Contributor on the two apps; mi-nebo-menu-aca AcrPull @ core/acr and Key Vault
-      # Secrets User @ core/kv; mi-nebo-vm AcrPull @ core/acr; mi-nebo-config Network Contributor on the VM's NSG.
+      # Added with the stacks that create the resources: mi-nebo-cd-a Container Apps Contributor on the two apps
+      # (aca); mi-nebo-config Network Contributor on the VM's NSG (vm).
       mi-nebo-stage-a:
         - Contributor @ rg:stage-a
         - Storage Blob Data Contributor @ container:tfstate-stage-a
         - Reader @ rg:core
+        - Log Analytics Contributor @ core/law  # the Container Apps environment sends its logs there
         - Managed Identity Operator @ mi:mi-nebo-menu-aca
         - Managed Identity Operator @ mi:mi-nebo-vm
       mi-nebo-ops:
@@ -49,8 +55,11 @@ groups:
         - Tag Contributor @ rg:stage-a
       mi-nebo-config:
         - Reader @ rg:stage-a
-      operator:
-        - Reader @ rg:stage-a
+      mi-nebo-menu-aca:
+        - AcrPull @ core/acr
+        - Key Vault Secrets User @ core/kv
+      mi-nebo-vm:
+        - AcrPull @ core/acr
 
   stage-b:  # B -> end of C
     active: false
