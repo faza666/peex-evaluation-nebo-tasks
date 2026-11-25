@@ -19,8 +19,8 @@ groups:
   shared:  # A -> end of C
     active: true
     grants:
-      # Added with the core stack: mi-nebo-ci AcrPush @ core/acr, mi-nebo-notify Communication and Email Service
-      # Owner @ core/acs, operator Key Vault Secrets Officer @ core/kv and Log Analytics Reader @ core/law.
+      # Added with the core stack: mi-nebo-ci AcrPush @ core/acr, operator Key Vault Secrets Officer @ core/kv and
+      # Log Analytics Reader @ core/law.
       mi-nebo-core:
         - Contributor @ rg:core
         - Storage Blob Data Contributor @ container:tfstate-core

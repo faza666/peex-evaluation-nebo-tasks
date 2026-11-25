@@ -15,7 +15,7 @@ locals {
   tags     = { "nebo:stack" = "core" }
 
   # nebo:scope names the one resource a grant in core/rbac/grants.yaml means, e.g. core/acr.
-  scoped = { for s in ["acr", "kv", "law", "amw", "acs"] : s => merge(local.tags, { "nebo:scope" = s }) }
+  scoped = { for s in ["acr", "kv", "law", "amw"] : s => merge(local.tags, { "nebo:scope" = s }) }
 }
 
 # --- Logs and metrics -------------------------------------------------------------------------
@@ -118,33 +118,4 @@ resource "azurerm_consumption_budget_resource_group" "core" {
       contact_groups = [azurerm_monitor_action_group.alerts.id]
     }
   }
-}
-
-# --- Email for pipeline notifications ---------------------------------------------------------
-
-resource "azurerm_email_communication_service" "core" {
-  name                = "ecs-nebo-${local.suffix}"
-  resource_group_name = data.azurerm_resource_group.core.name
-  data_location       = "Europe"
-  tags                = local.tags
-}
-
-resource "azurerm_email_communication_service_domain" "azure_managed" {
-  name              = "AzureManagedDomain"
-  email_service_id  = azurerm_email_communication_service.core.id
-  domain_management = "AzureManaged"
-  tags              = local.tags
-}
-
-# mi-nebo-notify sends through this resource with Entra sign-in (grant core/acs).
-resource "azurerm_communication_service" "core" {
-  name                = "acs-nebo-${local.suffix}"
-  resource_group_name = data.azurerm_resource_group.core.name
-  data_location       = "Europe"
-  tags                = local.scoped.acs
-}
-
-resource "azurerm_communication_service_email_domain_association" "core" {
-  communication_service_id = azurerm_communication_service.core.id
-  email_service_domain_id  = azurerm_email_communication_service_domain.azure_managed.id
 }

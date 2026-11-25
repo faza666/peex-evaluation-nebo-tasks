@@ -1,6 +1,6 @@
 # Stack: core
 
-Shared by every stage, in `rg-nebo-core`: the container registry, Log Analytics, Azure Monitor workspace, Key Vault, the alerts Action Group, an RG budget and Communication Services Email. Lives from Stage A to the end of Stage C.
+Shared by every stage, in `rg-nebo-core`: the container registry, Log Analytics, Azure Monitor workspace, Key Vault, the alerts Action Group and an RG budget. Lives from Stage A to the end of Stage C.
 
 The Subscription Owner created the resource group. This stack only fills it, and `terraform.yml` applies it as `mi-nebo-core`. It holds no identities and no role assignments: those live in `core/identities` and `core/rbac/grants.yaml`.
 
@@ -12,9 +12,8 @@ The Subscription Owner created the resource group. This stack only fills it, and
 | Key Vault | `kv-nebo-<suffix>` | RBAC mode, no purge protection, so the end-of-C teardown works. No firewall: Container Apps have no fixed outbound IP, so access is by role only |
 | Action Group | `ag-nebo-alerts` | Email to the notification address, and a Teams Workflows webhook once `TEAMS_ALERTS_WEBHOOK_URL` is set |
 | Budget | `budget-nebo-core` | This resource group, 10 per month, alerts at 50, 80 and 100% to the Action Group |
-| Communication Services | `acs-nebo-<suffix>`, `ecs-nebo-<suffix>` | Azure-managed sender domain, data in Europe |
 
-`<suffix>` is the first 6 hex characters of the SHA-256 of the subscription ID, the same as the state storage account. Every resource is tagged `nebo:stack=core`. The ones that grants point at also carry `nebo:scope` (`acr`, `kv`, `law`, `amw`, `acs`), which is how `core/<tag>` scopes in `core/rbac/grants.yaml` find them.
+`<suffix>` is the first 6 hex characters of the SHA-256 of the subscription ID, the same as the state storage account. Every resource is tagged `nebo:stack=core`. The ones that grants point at also carry `nebo:scope` (`acr`, `kv`, `law`, `amw`), which is how `core/<tag>` scopes in `core/rbac/grants.yaml` find them.
 
 ## How it is applied
 
@@ -32,7 +31,9 @@ terraform validate
 terraform output
 ```
 
-The outputs aren't secret. `acs_endpoint` and `acs_sender` go into the repository variables `ACS_ENDPOINT` and `ACS_SENDER`.
+The outputs aren't secret.
+
+**No email service here.** Azure sends the Action Group's alert and budget emails itself. Pipeline notifications go to Teams through the `notify` action, and the same Teams flow emails them from your own mailbox (#22), so NEBo needs no Communication Services.
 
 **Key Vault rebuilds:** `mi-nebo-core` has no rights on the subscription's deleted vaults, so Terraform neither purges nor recovers one. A destroyed vault stays soft-deleted for 7 days, and a rebuild within that time needs a new name or the Subscription Owner's purge.
 
