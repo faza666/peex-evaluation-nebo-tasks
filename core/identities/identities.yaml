@@ -26,9 +26,6 @@ groups:
       mi-nebo-ops:
         purpose: wake-up, sleep, sleep-guard, status and ops-report.
         github: [ref:refs/heads/main]
-      mi-nebo-notify:
-        purpose: Sends notification email through Azure Communication Services.
-        github: [pull_request, ref:refs/heads/main, environment:dev, environment:prod, environment:vm]
       mi-nebo-core:
         purpose: Deploys the core stack (rg-nebo-core).
         github: [environment:core]

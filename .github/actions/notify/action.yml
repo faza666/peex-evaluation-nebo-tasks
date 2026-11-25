@@ -1,8 +1,8 @@
 name: notify
 description: >
   Send one NEBo notification. For now it posts an Adaptive Card to a Teams Workflows webhook
-  ("Send webhook alerts from anyone to Teams"). Email through Azure Communication Services joins in #22,
-  with the same content.
+  ("Send webhook alerts from anyone to Teams"). In #22 the same flow also emails it from your own mailbox
+  (Outlook connector), so no email service or credential is needed in Azure or GitHub.
 
 inputs:
   teams-webhook:

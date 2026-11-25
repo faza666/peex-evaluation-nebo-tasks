@@ -11,16 +11,6 @@ output "acr_login_server" {
   value       = azurerm_container_registry.core.login_server
 }
 
-output "acs_endpoint" {
-  description = "Communication Services endpoint used to send email (repository variable ACS_ENDPOINT)."
-  value       = "https://${azurerm_communication_service.core.hostname}"
-}
-
-output "acs_sender" {
-  description = "Sender address of the Azure-managed email domain (repository variable ACS_SENDER)."
-  value       = "DoNotReply@${azurerm_email_communication_service_domain.azure_managed.mail_from_sender_domain}"
-}
-
 output "key_vault_name" {
   description = "Key Vault name."
   value       = azurerm_key_vault.core.name

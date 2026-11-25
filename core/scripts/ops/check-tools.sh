@@ -79,7 +79,7 @@ if [[ $stage =~ [ABC] ]]; then
     "ansible-galaxy collection list community.docker 2>/dev/null | grep -E '^community\.docker'"
   check optional "collection azure.azcollection" \
     "ansible-galaxy collection list azure.azcollection 2>/dev/null | grep -E '^azure\.azcollection'"
-  for ext in resource-graph communication containerapp; do
+  for ext in resource-graph containerapp; do
     check required "az extension $ext" "az extension show -n $ext --query version -o tsv"
   done
   condition required "gh token has 'project' scope" "gh auth status 2>&1 | grep -q \"'project'\"" \
