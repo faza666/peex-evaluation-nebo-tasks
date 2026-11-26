@@ -3,10 +3,12 @@
 #
 # Every NEBo resource carries the tag nebo:stack=<name>, so the scripts find what exists in
 # the current stage with one Azure Resource Graph query and need no edits between stages.
-# Compute that can sleep: VMs (deallocate), AKS clusters (stop), Application Gateways (stop).
+# Compute that can sleep: VMs (deallocate), AKS clusters (stop), Application Gateways (stop) and
+# Container Apps (stop: a stopped app serves nothing, so no request can start it again).
 # The container registry is permanent (core stack), so these scripts never touch it.
 
 TAG_STACK="nebo:stack"
+ACA_API="2025-01-01" # Microsoft.App API version for a Container App's status, start and stop (no az command)
 TAG_SLEEP_AFTER="nebo:sleep-after"
 TAG_FIRST_SEEN="nebo:first-seen-awake"
 
@@ -29,9 +31,9 @@ to_epoch() { date -u -d "$1" +%s 2>/dev/null || true; }
 
 # All tagged resources as JSON lines:
 # {id, name, type, computeKind, resourceGroup, stack, power, sleepAfter, firstSeen}
-# computeKind is vm, aks, appgw or other; power is running, stopped, transitioning or "" (not compute).
+# computeKind is vm, aks, appgw, aca or other; power is running, stopped, transitioning or "" (not compute).
 nebo_resources() {
-  local query
+  local query row power
   query=$(
     cat <<EOF
 Resources
@@ -40,11 +42,13 @@ Resources
     type =~ 'microsoft.compute/virtualmachines', 'vm',
     type =~ 'microsoft.containerservice/managedclusters', 'aks',
     type =~ 'microsoft.network/applicationgateways', 'appgw',
+    type =~ 'microsoft.app/containerapps', 'aca',
     'other')
 | extend rawPower = case(
     computeKind == 'vm', tostring(properties.extended.instanceView.powerState.code),
     computeKind == 'aks', tostring(properties.powerState.code),
     computeKind == 'appgw', tostring(properties.operationalState),
+    computeKind == 'aca', tostring(properties.runningStatus),
     '')
 | extend power = case(
     rawPower in~ ('PowerState/running', 'Running'), 'running',
@@ -56,7 +60,31 @@ Resources
 | order by stack asc, computeKind asc, name asc
 EOF
   )
-  az graph query -q "$query" --first 1000 --only-show-errors -o json | jq -c '.data[]'
+  # Resource Graph may not carry a Container App's runningStatus; then it is read from the app itself.
+  az graph query -q "$query" --first 1000 --only-show-errors -o json | jq -c '.data[]' |
+    while IFS= read -r row; do
+      if [[ $(jq -r '"\(.computeKind)/\(.power)"' <<<"$row") == aca/ ]]; then
+        power=$(aca_power "$(jq -r .id <<<"$row")") || exit 1 # a failed read stops the caller
+        row=$(jq -c --arg p "$power" '.power = $p' <<<"$row")
+      fi
+      printf '%s\n' "$row"
+    done
+}
+
+# A Container App's runningStatus, read directly: Running, Stopped, or a passing state such as Progressing.
+aca_status() { # resource-id
+  az rest --method get --url "https://management.azure.com$1?api-version=$ACA_API" \
+    --query properties.runningStatus -o tsv --only-show-errors
+}
+
+aca_power() { # resource-id -> running | stopped | transitioning
+  local status
+  status=$(aca_status "$1") || return 1
+  case $status in
+    Running) echo running ;;
+    Stopped) echo stopped ;;
+    *) echo transitioning ;;
+  esac
 }
 
 # Compute resources only, optionally limited to the kinds in $1 (comma-separated, or "all").
@@ -76,10 +104,10 @@ to_array() { # array-name "$rows"
   return 0
 }
 
-# Validate a --targets value: "all" or a comma-separated list of vm, aks, appgw.
+# Validate a --targets value: "all" or a comma-separated list of vm, aks, appgw, aca.
 check_targets() {
-  [[ $1 == all || $1 =~ ^(vm|aks|appgw)(,(vm|aks|appgw))*$ ]] ||
-    { log "ERROR: --targets must be 'all' or a comma-separated list of vm, aks, appgw (got '$1')"; return 1; }
+  [[ $1 == all || $1 =~ ^(vm|aks|appgw|aca)(,(vm|aks|appgw|aca))*$ ]] ||
+    { log "ERROR: --targets must be 'all' or a comma-separated list of vm, aks, appgw, aca (got '$1')"; return 1; }
 }
 
 set_tags() { # resource-id key=value...
@@ -95,6 +123,8 @@ start_resource() { # json line
     vm) az vm start --ids "$id" --no-wait --only-show-errors ;;
     aks) az aks start -g "$rg" -n "$name" --no-wait --only-show-errors ;;
     appgw) az network application-gateway start --ids "$id" --no-wait --only-show-errors ;;
+    aca) az rest --method post --url "https://management.azure.com$id/start?api-version=$ACA_API" \
+      --only-show-errors -o none ;; # accepted at once; wait_for follows it
   esac
 }
 
@@ -105,6 +135,8 @@ stop_resource() { # json line
     vm) az vm deallocate --ids "$id" --no-wait --only-show-errors ;;
     aks) az aks stop -g "$rg" -n "$name" --no-wait --only-show-errors ;;
     appgw) az network application-gateway stop --ids "$id" --no-wait --only-show-errors ;;
+    aca) az rest --method post --url "https://management.azure.com$id/stop?api-version=$ACA_API" \
+      --only-show-errors -o none ;;
   esac
 }
 
@@ -119,6 +151,7 @@ power_now() { # json line
       --query "join('/', [powerState.code, provisioningState])" -o tsv ;;
     appgw) az network application-gateway show --ids "$id" --only-show-errors \
       --query operationalState -o tsv ;;
+    aca) aca_status "$id" ;;
   esac
 }
 

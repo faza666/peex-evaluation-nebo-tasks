@@ -53,6 +53,7 @@ groups:
       mi-nebo-ops:
         - Reader @ rg:stage-a
         - Virtual Machine Contributor @ rg:stage-a
+        - Container Apps Operator @ rg:stage-a  # stop and start menu-dev and menu-prod: sleep, wake-up, sleep-guard
         - Tag Contributor @ rg:stage-a
       mi-nebo-cd-a:
         - Container Apps Contributor @ rg:stage-a  # new revisions of menu-dev and menu-prod

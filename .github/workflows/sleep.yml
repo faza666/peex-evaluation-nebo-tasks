@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       targets:
-        description: "What to sleep: all, or a comma-separated list of vm, aks, appgw"
+        description: "What to sleep: all, or a comma-separated list of vm, aks, appgw, aca"
         type: string
         default: all
         required: true

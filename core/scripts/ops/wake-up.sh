@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start the stage's compute, tag it to sleep after N hours, and wait until it runs.
 #
-# Usage: core/scripts/ops/wake-up.sh [--targets all|vm,aks,appgw] [--hours 1-12]
+# Usage: core/scripts/ops/wake-up.sh [--targets all|vm,aks,appgw,aca] [--hours 1-12]
 #   --targets  which compute kinds to start (default: all)
 #   --hours    when sleep-guard may put it back to sleep (default 4, maximum 12)
 set -euo pipefail

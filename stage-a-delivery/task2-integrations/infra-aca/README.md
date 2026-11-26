@@ -30,6 +30,7 @@ All of these are in `core/rbac/grants.yaml`, approved with the Stage A grants:
 | `mi-nebo-stage-a` | Reader on `rg-nebo-core` | the Action Group, for the budget |
 | `mi-nebo-menu-aca` | AcrPull on the registry, Key Vault Secrets User on the vault | pulling images; secrets once the app needs any |
 | `mi-nebo-cd-a` | Container Apps Contributor on `rg-nebo-stage-a` | `cd.yml`: revisions and traffic |
+| `mi-nebo-ops` | Container Apps Operator and Tag Contributor on `rg-nebo-stage-a` | sleep, wake-up and sleep-guard: stop and start the apps, and their sleep tags |
 
 ## How it is applied
 
@@ -43,6 +44,12 @@ Locally you can only validate it:
 terraform init -backend=false && terraform validate
 ```
 
-**Cost:** nothing while idle. Min replicas 0 means an app has no replicas until a request arrives, and the consumption plan's monthly free grant covers the rest. `sleep` and `wake-up` leave the apps alone.
+**Cost:** nothing while idle. Min replicas 0 means an app has no replicas until a request arrives, and the consumption plan's monthly free grant covers the rest.
+
+**Sleep:** like the other compute, the apps sleep unless you are working.
+- `sleep` stops both apps, so they serve nothing and no request can start them. `wake-up` starts them again and sets `nebo:sleep-after`.
+- `sleep-guard` stops an app that is past its `nebo:sleep-after`, or that has run without one for more than 2 hours.
+- `cd.yml` skips an app that is asleep, with a notice. After `wake-up`, run `cd.yml` by hand with the tag.
+- Terraform ignores the two sleep tags (`nebo:sleep-after`, `nebo:first-seen-awake`), so an apply doesn't remove them.
 
 **Teardown** is at the end of Stage B: destroy `aca` from `terraform.yml`.

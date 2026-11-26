@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stop or deallocate the stage's compute; state and configuration are kept.
 #
-# Usage: core/scripts/ops/sleep.sh [--targets all|vm,aks,appgw] [--no-wait]
+# Usage: core/scripts/ops/sleep.sh [--targets all|vm,aks,appgw,aca] [--no-wait]
 #   --targets  which compute kinds to put to sleep (default: all)
 #   --no-wait  return as soon as the stop requests are sent
 set -euo pipefail

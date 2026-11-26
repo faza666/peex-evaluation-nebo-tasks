@@ -122,11 +122,13 @@ resource "azurerm_container_app" "menu" {
   }
 
   lifecycle {
-    # cd.yml owns these after the first apply.
+    # cd.yml owns the first three after the first apply; the ops scripts set the two sleep tags.
     ignore_changes = [
       template[0].container[0].image,
       template[0].revision_suffix,
       ingress[0].traffic_weight,
+      tags["nebo:sleep-after"],
+      tags["nebo:first-seen-awake"],
     ]
   }
 }

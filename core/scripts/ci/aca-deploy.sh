@@ -8,6 +8,8 @@
 #   4. Move all traffic to it, then smoke test the app's address: it must serve the new revision's version.
 # If 2, 3 or 4 fails, all traffic goes back to the previous revision and the new one is deactivated.
 # An app that doesn't exist yet is skipped: the aca stack creates it with the image of the commit it applies.
+# So is an app that is asleep (stopped by sleep or sleep-guard): pipelines never start what sleeps. After
+# wake-up, a manual cd.yml run deploys the tag.
 #
 # Usage: core/scripts/ci/aca-deploy.sh <app> <tag>
 #   tag  an image tag docker-build.yml pushes: v<MAJOR.MINOR.PATCH> or sha-<7 hex characters>
@@ -47,6 +49,13 @@ if ! json=$(az containerapp show --name "$app" --resource-group "$rg" --output j
   fi
   cat "$err" >&2
   exit 1
+fi
+
+if [[ $(jq -r '.properties.runningStatus // ""' <<<"$json") == Stopped ]]; then
+  echo "::notice title=$app is asleep::Run wake-up, then cd.yml with tag $tag. Nothing was deployed."
+  out result skipped
+  summary – – "skipped: the app is asleep"
+  exit 0
 fi
 
 id=$(jq -r .id <<<"$json")
