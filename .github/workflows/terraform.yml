@@ -150,9 +150,11 @@ jobs:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      # Declared by core only; other stacks ignore them.
+      # Each stack declares only what it uses and ignores the rest: core the two addresses, aca the commit
+      # (a new app starts with the image docker-build.yml pushed for it).
       TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
       TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      TF_VAR_commit: ${{ github.sha }}
       STACK: ${{ matrix.stack }}
       DIR: ${{ matrix.dir }}
     steps:
@@ -169,7 +171,19 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: |
           terraform fmt -check -diff
-          terraform init -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl"
+          # A stack that was never applied has no state yet, and init would write an empty one, which mi-nebo-plan
+          # may not. Such a stack is planned against an empty local state; its first apply creates the real one.
+          err="$RUNNER_TEMP/init.err"
+          if ! terraform init -no-color -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl" 2>"$err"; then
+            if grep -q "failed to lock azure state" "$err" && grep -q "The specified blob does not exist" "$err"; then
+              echo "::notice title=No state for $STACK yet::Planned against an empty state. The first apply creates it."
+              printf 'terraform {\n  backend "local" {}\n}\n' >backend_override.tf
+              terraform init -no-color -reconfigure
+            else
+              cat "$err" >&2
+              exit 1
+            fi
+          fi
           terraform validate -no-color
       - name: TFLint
         working-directory: ${{ matrix.dir }}
@@ -237,6 +251,7 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
       TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      TF_VAR_commit: ${{ github.sha }}
       STACK: ${{ matrix.stack }}
       DEPLOYER: ${{ matrix.deployer }}
     steps:
@@ -301,6 +316,7 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
       TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      TF_VAR_commit: ${{ github.sha }}
       STACK: ${{ matrix.stack }}
       DEPLOYER: ${{ matrix.deployer }}
     steps:

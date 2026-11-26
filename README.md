@@ -28,7 +28,7 @@ core/                                    shared across stages
 ├── rbac/                                Terraform stack rbac: every role assignment, applied after the owner approves
 ├── scripts/owner/                       PowerShell scripts for the subscription owner
 ├── scripts/ops/                         tool checks, state bootstrap, wake-up / sleep / status, sleep guard
-├── scripts/ci/                          docker-build and rbac helpers
+├── scripts/ci/                          docker-build, rbac, terraform and cd helpers
 └── adr/                                 architecture decision records
 stage-a-delivery/
 ├── task1-feedback/                      badges and notification emails
@@ -62,7 +62,7 @@ Logs go to stdout as one JSON object per line, including gunicorn's access log.
 
 Everything below runs in [`core/app/`](core/app/), the application's own folder.
 
-Locally (Python 3.8 or newer):
+Locally (Python 3.13, as in the image):
 
 ```sh
 cd core/app
@@ -79,7 +79,7 @@ docker build --build-arg APP_VERSION=0.1.0 -t nebo-menu .
 docker run --rm -p 8000:8000 nebo-menu  # migrates, seeds, then serves on :8000
 ```
 
-The image is deliberately based on `python:3.8-slim`, which is end-of-life, so the security scan in Task 2 has real findings to fail on.
+The image is based on `python:3.13-slim`. Until #24 it was `python:3.8-slim`, which is end-of-life: its CRITICAL findings with fixes stopped every push at the Trivy gate (Task 2, failure scenario 4).
 
 Configuration comes from environment variables: `DATABASE_URL` (default: SQLite inside the container), `APP_VERSION`, `LOG_LEVEL` and `PORT`.
 
@@ -114,13 +114,13 @@ An environment is what a federated credential trusts. A workflow job can sign in
 | `stage-a` | `terraform.yml` apply and destroy of `aca` and `vm` | `mi-nebo-stage-a` | change `rg-nebo-stage-a` | the operator | `main` | off |
 | `stage-b` | `terraform.yml` apply and destroy of `aks` | `mi-nebo-stage-b` | change `rg-nebo-stage-b` | the operator | `main` | off |
 | `vm` | `ansible.yml` apply (#29) | `mi-nebo-config` | open SSH on the VM's NSG to the runner | the operator | `main` | off |
-| `dev` | `cd.yml` deploy to `menu-dev` (#24) | `mi-nebo-cd-a`, later `mi-nebo-cd-b` | new app revisions; Helm releases in Stage B | none | any | on |
-| `prod` | `cd.yml` deploy to `menu-prod` (#24) | `mi-nebo-cd-a`, later `mi-nebo-cd-b` | the same in prod; holds `PROJECT_TOKEN` (#26) | the operator | `main` | off |
+| `dev` | `cd.yml` deploy to `menu-dev` | `mi-nebo-cd-a`, later `mi-nebo-cd-b` | new app revisions; Helm releases in Stage B | none | `main` | off |
+| `prod` | `cd.yml` deploy to `menu-prod` | `mi-nebo-cd-a`, later `mi-nebo-cd-b` | the same in prod; holds `PROJECT_TOKEN` (#26) | the operator | `main` | off |
 
 - **The subscription owner's approval is the control.** `rbac` is the only environment whose approval is a second person's: everything that grants rights passes through it. `rbac.yml` checks its rules before every request and stops if one is missing.
 - **The operator's approvals are a pause.** They show the plan before anything changes in Azure, so a merge never applies on its own.
 - **Not every identity has an environment.** `mi-nebo-plan` (pull requests and `main`), `mi-nebo-ops` and `mi-nebo-ci` (`main`) do only read-only or routine work, so they trust a branch or pull requests, not an environment. Workload identities (`mi-nebo-menu-aca`, `mi-nebo-vm`, `mi-nebo-aks`, `mi-nebo-kubelet`, `mi-nebo-menu-wi`) are attached to Azure resources and can't be used from GitHub at all.
-- **`dev` gets `main` only and admin bypass off** before `cd.yml` exists (#24).
+- **`dev` has no reviewer,** so a merge deploys to `menu-dev` without waiting. It still allows only `main`, with admin bypass off, because `mi-nebo-cd-a` trusts it.
 - **`stage-c`** is created in C0, the same way as `stage-b`.
 
 To set one up: Settings → Environments → New environment. Add the required reviewer, set Deployment branches to Selected branches with `main`, and turn off Allow administrators to bypass.

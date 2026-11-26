@@ -10,7 +10,7 @@ Everything here is used by all three stages and lives until the final teardown.
 | [`rbac/`](rbac/) | Terraform stack `rbac`: every role assignment, listed in `grants.yaml`. Applied only by the `rbac` workflow, after the subscription owner approves |
 | [`scripts/owner/`](scripts/owner/) | PowerShell scripts for the subscription owner: create the resource groups, make the seed grants, audit access, remove everything at the end |
 | [`scripts/ops/`](scripts/ops/) | Tool checks, the state-storage bootstrap, wake-up / sleep / status and the sleep guard |
-| [`scripts/ci/`](scripts/ci/) | Helpers for the workflows: version, test report, Trivy gates and run summary (`docker-build`); the change list and Teams cards (`rbac`); the stack list and plan changes (`terraform`) |
+| [`scripts/ci/`](scripts/ci/) | Helpers for the workflows: version, test report, Trivy gates and run summary (`docker-build`); the change list and Teams cards (`rbac`); the stack list and plan changes (`terraform`); the Container Apps deploy (`cd`) |
 | [`adr/`](adr/) | Architecture decision records |
 
 `.github/` is shared too but stays at the repo root, because GitHub reads workflows, issue forms and actions only from there. So does `VERSION`: CI counts the commits since it last changed to get the patch number.

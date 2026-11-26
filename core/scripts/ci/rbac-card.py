@@ -42,7 +42,7 @@ def text(value, **extra):
 def row(cells, header=False, color=None):
     widths = ["auto", 3, 4, 4]
     columns = []
-    for i, (cell, width) in enumerate(zip(cells, widths)):
+    for i, (cell, width) in enumerate(zip(cells, widths, strict=True)):
         block = text(cell, weight="Bolder" if header else "Default")
         if color and i == 0:
             block["color"] = color
