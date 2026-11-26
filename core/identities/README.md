@@ -8,8 +8,10 @@ Every managed identity NEBo uses, with the GitHub (and later AKS) federated cred
 |---|---|---|
 | `shared` | A → end of C | `mi-nebo-rbac` (approved role assignments), `mi-nebo-plan` (read-only plans), `mi-nebo-ops` (wake-up, sleep, guard, reports), `mi-nebo-core` (core deployer), `mi-nebo-ci` (image push) |
 | `stage-a` | A → end of B | `mi-nebo-stage-a` (deployer), `mi-nebo-cd-a` (Container Apps revisions), `mi-nebo-config` (Ansible), workload: `mi-nebo-menu-aca`, `mi-nebo-vm` |
-| `stage-b` | B → end of C | `mi-nebo-stage-b` (deployer), `mi-nebo-cd-b` (Helm), workload: `mi-nebo-aks`, `mi-nebo-kubelet`, `mi-nebo-menu-wi` |
+| `stage-b` | A → end of C (used from B) | `mi-nebo-stage-b` (deployer), `mi-nebo-cd-b` (Helm), workload: `mi-nebo-aks`, `mi-nebo-kubelet`, `mi-nebo-menu-wi` |
 | `stage-c` | C | `mi-nebo-stage-c` (deployer), workload: `mi-nebo-appgw`, `mi-nebo-agic` |
+
+`stage-b` is active from Stage A, so the subscription owner approved its grants together with Stage A's.
 
 ## Who applies it
 

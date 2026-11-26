@@ -32,7 +32,7 @@ Each grant in `grants.yaml` is `<built-in role> @ <scope>`, under the identity (
 | `mi:<identity>` | a managed identity in `rg-nebo-mgmt` | `Managed Identity Operator @ mi:mi-nebo-vm` |
 | `<group>/<tag>` | the one resource in `rg-nebo-<group>` that its stack tagged `nebo:scope = "<tag>"` | `AcrPush @ core/acr` |
 
-A grant on a resource goes in with the work item that creates the resource: tag it in its stack, apply, then add the grant.
+A grant on a resource goes in with the work item that creates the resource: tag it in its stack, apply, then add the grant. The exception is Stage A and B: their grants were requested together, before the stage stacks existed, so grants for resources those stacks create are on the resource group, with a comment naming the resource. To narrow one later, tag the resource, apply, and change its scope to `<group>/<tag>`.
 
 ## Who can do what here
 
