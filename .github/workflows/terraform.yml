@@ -171,7 +171,19 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: |
           terraform fmt -check -diff
-          terraform init -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl"
+          # A stack that was never applied has no state yet, and init would write an empty one, which mi-nebo-plan
+          # may not. Such a stack is planned against an empty local state; its first apply creates the real one.
+          err="$RUNNER_TEMP/init.err"
+          if ! terraform init -no-color -backend-config="$GITHUB_WORKSPACE/core/infra/backend.hcl" 2>"$err"; then
+            if grep -q "failed to lock azure state" "$err" && grep -q "The specified blob does not exist" "$err"; then
+              echo "::notice title=No state for $STACK yet::Planned against an empty state. The first apply creates it."
+              printf 'terraform {\n  backend "local" {}\n}\n' >backend_override.tf
+              terraform init -no-color -reconfigure
+            else
+              cat "$err" >&2
+              exit 1
+            fi
+          fi
           terraform validate -no-color
       - name: TFLint
         working-directory: ${{ matrix.dir }}
