@@ -150,9 +150,11 @@ jobs:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
       ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      # Declared by core only; other stacks ignore them.
+      # Each stack declares only what it uses and ignores the rest: core the two addresses, aca the commit
+      # (a new app starts with the image docker-build.yml pushed for it).
       TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
       TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      TF_VAR_commit: ${{ github.sha }}
       STACK: ${{ matrix.stack }}
       DIR: ${{ matrix.dir }}
     steps:
@@ -237,6 +239,7 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
       TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      TF_VAR_commit: ${{ github.sha }}
       STACK: ${{ matrix.stack }}
       DEPLOYER: ${{ matrix.deployer }}
     steps:
@@ -301,6 +304,7 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_notify_email: ${{ secrets.NOTIFY_EMAIL }}
       TF_VAR_alerts_webhook_url: ${{ secrets.TEAMS_ALERTS_WEBHOOK_URL }}
+      TF_VAR_commit: ${{ github.sha }}
       STACK: ${{ matrix.stack }}
       DEPLOYER: ${{ matrix.deployer }}
     steps:

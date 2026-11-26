@@ -1,6 +1,6 @@
 # Top-level runtime dependencies. requirements.txt is generated from this file inside
-# python:3.8-slim (the current base image), so every pin supports Python 3.8:
-#   docker run --rm -v "$PWD/requirements.in:/r.in:ro" python:3.8-slim \
+# python:3.13-slim (the base image in the Dockerfile), so every pin fits that Python:
+#   docker run --rm -v "$PWD/requirements.in:/r.in:ro" python:3.13-slim \
 #     sh -c 'pip install -q -r /r.in && pip freeze' > requirements.txt
 Flask>=3.0,<3.1
 Flask-SQLAlchemy>=3.1,<3.2

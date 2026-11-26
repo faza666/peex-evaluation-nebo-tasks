@@ -1,0 +1,129 @@
+name: cd
+
+# Deploys an image from the container registry to the Stage A Container Apps (plan section A1). Each app gets a
+# new revision, which takes traffic only after its smoke test passes, and loses it again if a later step fails:
+# see core/scripts/ci/aca-deploy.sh.
+#   image  which image: after docker-build.yml pushed one from main, sha-<7> of that commit; in a manual run, the
+#          tag you give. Nothing is deployed when docker-build didn't push (a failed gate, a pull request)
+#   dev    menu-dev, in the dev environment (main only, no reviewer)
+#   prod   menu-prod, in the prod environment once you approve it there, and only after dev deployed
+# Both sign in as mi-nebo-cd-a, whose federated credentials trust only these two environments. Its one role is
+# Container Apps Contributor on rg-nebo-stage-a, from core/rbac/grants.yaml.
+on:
+  workflow_run:
+    workflows: [docker-build]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag in the registry: v<version> (e.g. v3.0.14) or sha-<7 characters>"
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deploy at a time. A newer run waits instead of cancelling one halfway through a traffic move.
+  group: cd
+  cancel-in-progress: false
+
+jobs:
+  image:
+    # From docker-build only after a successful run for a push to main in this repository.
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
+      && github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read  # the docker-build run's steps
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+    steps:
+      - name: Pick the image
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          TAG: ${{ inputs.tag }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          if [[ $EVENT == workflow_dispatch ]]; then
+            tag=$TAG
+          else
+            pushed=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs" --paginate \
+              --jq '.jobs[] | select(.name == "image") | .steps[] | select(.name == "Push to ACR") | .conclusion')
+            if [[ $pushed != success ]]; then
+              echo "::notice title=No new image::docker-build pushed no image for ${HEAD_SHA::7}" \
+                "(its push step: ${pushed:-not found}). Nothing to deploy."
+              exit 0
+            fi
+            tag=sha-${HEAD_SHA::7}
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "## Deploy \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image tag: $tag"
+
+  dev:
+    needs: image
+    if: needs.image.outputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: dev
+      url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write  # OIDC sign-in as mi-nebo-cd-a
+    outputs:
+      result: ${{ steps.deploy.outputs.result }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: core/scripts/ci
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906  # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_CD_A }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Add the Container Apps extension
+        run: az extension add --name containerapp --upgrade --only-show-errors
+      - name: Deploy to menu-dev
+        id: deploy
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+        run: core/scripts/ci/aca-deploy.sh menu-dev "$TAG"
+
+  prod:
+    needs: [image, dev]
+    if: needs.dev.outputs.result == 'deployed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: prod
+      url: ${{ steps.deploy.outputs.url }}
+    permissions:
+      contents: read
+      id-token: write  # OIDC sign-in as mi-nebo-cd-a
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: core/scripts/ci
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906  # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_CD_A }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Add the Container Apps extension
+        run: az extension add --name containerapp --upgrade --only-show-errors
+      - name: Deploy to menu-prod
+        id: deploy
+        env:
+          TAG: ${{ needs.image.outputs.tag }}
+        run: core/scripts/ci/aca-deploy.sh menu-prod "$TAG"

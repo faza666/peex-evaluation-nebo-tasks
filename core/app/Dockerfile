@@ -1,7 +1,7 @@
-# Deliberately old base image: Python 3.8 is end-of-life and its OS packages are no
-# longer updated, so the Trivy scan in Task 2 has real findings to fail on. Upgrading
-# it is one of that task's failure scenarios.
-FROM python:3.8-slim
+# Until #24 this was python:3.8-slim, which is end-of-life: its OS packages had CRITICAL
+# findings with fixes, so the Trivy gate in docker-build.yml stopped every push (Task 2,
+# failure scenario 4). CI lint and tests run in this same image (in-runtime-image.sh).
+FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
