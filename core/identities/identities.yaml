@@ -50,8 +50,8 @@ groups:
       mi-nebo-vm:
         purpose: The VM's identity (pulls images, sends metrics).
 
-  stage-b:  # B -> end of C
-    active: false
+  stage-b:  # A -> end of C; used from B. Active from A so its grants are approved with Stage A's.
+    active: true
     identities:
       mi-nebo-stage-b:
         purpose: Deploys the aks stack (rg-nebo-stage-b).
